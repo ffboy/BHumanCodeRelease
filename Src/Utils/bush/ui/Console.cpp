@@ -1,20 +1,25 @@
+#include <QApplication>
 #include <QFormLayout>
 #include <QGridLayout>
 #include <QLabel>
 #include <QLineEdit>
+#include <QMessageBox>
 #include <QPalette>
 #include <QPushButton>
 #include <QResizeEvent>
 #include <QScrollBar>
+#include <QtConcurrent>
 #include <QtCore>
-#include <QApplication>
-#include <QMessageBox>
+
 #include "Utils/bush/cmdlib/Context.h"
 #include "Utils/bush/tools/StringTools.h"
 #include "Utils/bush/ui/CommandLineEdit.h"
 #include "Utils/bush/ui/Console.h"
 #include "Utils/bush/ui/TeamSelector.h"
 #include "Utils/bush/ui/VisualContext.h"
+#ifdef MACOS
+#include "../Src/Controller/Visualization/Helper.h"
+#endif
 
 Icons Icons::theIcons;
 
@@ -45,6 +50,7 @@ VisualContextDecoration::VisualContextDecoration(const QString& commandLine, Vis
   button->setFlat(true);
   button->setCheckable(true);
   button->setChecked(true);
+  button->setStyleSheet("background-color: rgba(255, 255, 255, 0);");
   layout->addRow(visualContext);
   setLayout(layout);
 
@@ -92,17 +98,9 @@ Console::Console(TeamSelector* teamSelector)
   : visualContext(new VisualContext(this)),
     teamSelector(teamSelector),
     scrollArea(new ScrollArea(this)),
-    prompt(0),
     cmdLine(0)
 {
   cmdLine = new CommandLineEdit(this);
-
-  prompt = new QLabel("bush>", cmdLine);
-  prompt->setAutoFillBackground(true);
-  QPalette p = prompt->palette();
-  p.setColor(QPalette::Background, p.color(QPalette::AlternateBase));
-  prompt->setPalette(p);
-
   QGridLayout* layout = new QGridLayout();
   layout->setHorizontalSpacing(0);
   scrollArea->setWidget(visualContext);
@@ -112,7 +110,7 @@ Console::Console(TeamSelector* teamSelector)
   layout->setRowStretch(0, 1);
   QFormLayout* fl = new QFormLayout();
   fl->setFieldGrowthPolicy(QFormLayout::AllNonFixedFieldsGrow);
-  fl->addRow(prompt, cmdLine);
+  fl->addRow(new QLabel("bush>", cmdLine), cmdLine);
   layout->addLayout(fl, 1, 0);
   setLayout(layout);
 
@@ -169,4 +167,14 @@ void Console::fireCommand(const QString& command)
 void Console::cancel()
 {
   visualContext->cancel();
+}
+
+void Console::paintEvent(QPaintEvent* event)
+{
+#ifdef MACOS
+  QPalette p = palette();
+  p.setColor(QPalette::AlternateBase, getAlternateBase().color());
+  setPalette(p);
+#endif
+  QFrame::paintEvent(event);
 }

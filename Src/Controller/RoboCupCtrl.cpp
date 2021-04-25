@@ -3,29 +3,33 @@
  *
  * This file implements the class RoboCupCtrl.
  *
- * @author <a href="mailto:Thomas.Roefer@dfki.de">Thomas Röfer</a>
+ * @author Thomas Röfer
  * @author <A href="mailto:kspiess@tzi.de">Kai Spiess</A>
  * @author Colin Graf
  */
 
 #include "RobotConsole.h"
 #include "RoboCupCtrl.h"
-#include "Platform/SimRobotQt/Robot.h"
+#include "Platform/Time.h"
+#include "Tools/Framework/Robot.h"
+#include "Tools/Settings.h"
 
+#include <QApplication>
 #include <QIcon>
 
-#ifdef OSX
-#define TOLERANCE 30.f
+#ifdef MACOS
+#include "Controller/Visualization/Helper.h"
+#define TOLERANCE static_cast<float>(3 * simStepLength)
 #else
-#define TOLERANCE 10.f
+#define TOLERANCE static_cast<float>(simStepLength)
 #endif
 
-RoboCupCtrl* RoboCupCtrl::controller = 0;
-SimRobot::Application* RoboCupCtrl::application = 0;
+RoboCupCtrl* RoboCupCtrl::controller = nullptr;
+SimRobot::Application* RoboCupCtrl::application = nullptr;
 
-RoboCupCtrl::RoboCupCtrl(SimRobot::Application& application) : robotName(0), simTime(false), delayTime(0), lastTime(0)
+RoboCupCtrl::RoboCupCtrl(SimRobot::Application& application)
 {
-  NAME_THREAD("Main");
+  Thread::nameCurrentThread("Main");
 
   this->controller = this;
   this->application = &application;
@@ -39,24 +43,44 @@ bool RoboCupCtrl::compile()
   if(!scene)
     return false;
 
+  // Get colors of first and second team
+  // If there is no team colors compound, fall back to default (black, blue)
+  SimRobot::Object* teamColors(application->resolveObject("RoboCup.teamColors", SimRobotCore2::compound));
+  if(teamColors != nullptr)
+  {
+    const QString& fullNameFirstTeamColor = static_cast<SimRobot::Object*>(application->getObjectChild(*teamColors, 0u))->getFullName();
+    const QString& fullNameSecondTeamColor = static_cast<SimRobot::Object*>(application->getObjectChild(*teamColors, 1u))->getFullName();
+    const std::string baseNameFirstTeamColor = fullNameFirstTeamColor.mid(fullNameFirstTeamColor.lastIndexOf('.') + 1).toUtf8().constData();
+    const std::string baseNameSecondTeamColor = fullNameSecondTeamColor.mid(fullNameSecondTeamColor.lastIndexOf('.') + 1).toUtf8().constData();
+
+    firstTeamColor = static_cast<Settings::TeamColor>(TypeRegistry::getEnumValue(typeid(Settings::TeamColor).name(), baseNameFirstTeamColor));
+    secondTeamColor = static_cast<Settings::TeamColor>(TypeRegistry::getEnumValue(typeid(Settings::TeamColor).name(), baseNameSecondTeamColor));
+  }
+  if(firstTeamColor == static_cast<Settings::TeamColor>(-1))
+    firstTeamColor = Settings::TeamColor::black;
+  if(secondTeamColor == static_cast<Settings::TeamColor>(-1))
+    secondTeamColor = Settings::TeamColor::blue;
+  gameController.setTeamInfos(firstTeamColor, secondTeamColor);
+
   // initialize simulated time and step length
-  time = 10000 - SystemCall::getRealSystemTime();
-  simStepLength =  int(scene->getStepLength() * 1000.f + 0.5f);
+  time = 100000 - Time::getRealSystemTime();
+  simStepLength = int(scene->getStepLength() * 1000.f + 0.5f);
   if(simStepLength > 20)
     simStepLength = 20;
-  delayTime = (float) simStepLength;
+  delayTime = static_cast<float>(simStepLength);
 
   // get interfaces to simulated objects
   SimRobot::Object* group = application->resolveObject("RoboCup.robots", SimRobotCore2::compound);
+
   for(unsigned currentRobot = 0, count = application->getObjectChildCount(*group); currentRobot < count; ++currentRobot)
   {
-    SimRobot::Object* robot = (SimRobot::Object*)application->getObjectChild(*group, currentRobot);
+    SimRobot::Object* robot = static_cast<SimRobot::Object*>(application->getObjectChild(*group, currentRobot));
     const QString& fullName = robot->getFullName();
     std::string robotName = fullName.toUtf8().constData();
     this->robotName = robotName.c_str();
     robots.push_back(new Robot(fullName.mid(fullName.lastIndexOf('.') + 1).toUtf8().constData()));
   }
-  this->robotName = 0;
+  this->robotName = nullptr;
   const SimRobot::Object* balls = (SimRobotCore2::Object*)RoboCupCtrl::application->resolveObject("RoboCup.balls", SimRobotCore2::compound);
   if(balls)
   {
@@ -72,9 +96,19 @@ bool RoboCupCtrl::compile()
 RoboCupCtrl::~RoboCupCtrl()
 {
   qDeleteAll(views);
-  SimulatedRobot::setBall(0);
-  controller = 0;
-  application = 0;
+  SimulatedRobot::setBall(nullptr);
+  controller = nullptr;
+  application = nullptr;
+}
+
+QBrush RoboCupCtrl::getAlternateBackgroundColor() const
+{
+#ifdef MACOS
+  return getAlternateBase();
+#else
+  return QApplication::palette().alternateBase();
+#endif
+
 }
 
 void RoboCupCtrl::addView(SimRobot::Object* object, const SimRobot::Object* parent, int flags)
@@ -96,21 +130,32 @@ void RoboCupCtrl::addView(SimRobot::Object* object, const QString& categoryName,
   addView(object, category, flags);
 }
 
+void RoboCupCtrl::removeView(SimRobot::Object* object)
+{
+  views.removeOne(object);
+  application->unregisterObject(*object);
+}
+
+void RoboCupCtrl::removeCategory(SimRobot::Object* object)
+{
+  views.removeOne(object);
+  application->unregisterObject(*object);
+}
+
 SimRobot::Object* RoboCupCtrl::addCategory(const QString& name, const SimRobot::Object* parent, const char* icon)
 {
   class Category : public SimRobot::Object
   {
-  public:
-    Category(const QString& name, const QString& fullName, const char* icon) : name(name), fullName(fullName), icon(icon) {}
-
-  private:
     QString name;
     QString fullName;
     QIcon icon;
 
-    virtual const QString& getDisplayName() const {return name;}
-    virtual const QString& getFullName() const {return fullName;}
-    virtual const QIcon* getIcon() const {return &icon;}
+  public:
+    Category(const QString& name, const QString& fullName, const char* icon) : name(name), fullName(fullName), icon(icon) {}
+
+  private:
+    const QString& getFullName() const override { return fullName; }
+    const QIcon* getIcon() const override { return &icon; }
   };
 
   SimRobot::Object* category = new Category(name, parent ? parent->getFullName() + "." + name : name, icon ? icon : ":/Icons/folder.png");
@@ -137,20 +182,20 @@ void RoboCupCtrl::start()
 #ifdef WINDOWS
   VERIFY(timeBeginPeriod(1) == TIMERR_NOERROR);
 #endif
-  MultiDebugSenderBase::terminating = false;
-  for(std::list<Robot*>::iterator i = robots.begin(); i != robots.end(); ++i)
-    (*i)->start();
+  DebugSenderBase::terminating = false;
+  for(Robot* robot : robots)
+    robot->start();
 }
 
 void RoboCupCtrl::stop()
 {
-  MultiDebugSenderBase::terminating = true;
-  for(std::list<Robot*>::iterator i = robots.begin(); i != robots.end(); ++i)
-    (*i)->announceStop();
-  for(std::list<Robot*>::iterator i = robots.begin(); i != robots.end(); ++i)
+  DebugSenderBase::terminating = true;
+  for(Robot* robot : robots)
+    robot->announceStop();
+  for(Robot* robot : robots)
   {
-    (*i)->stop();
-    delete *i;
+    robot->stop();
+    delete robot;
   }
   controller = 0;
 #ifdef WINDOWS
@@ -162,12 +207,12 @@ void RoboCupCtrl::update()
 {
   if(delayTime != 0.f)
   {
-    float t = (float) SystemCall::getRealSystemTime();
+    float t = static_cast<float>(Time::getRealSystemTime());
     lastTime += delayTime;
     if(lastTime > t) // simulation is running faster then rt
     {
       if(lastTime > t + TOLERANCE)
-        SystemCall::sleep(int(lastTime - t - TOLERANCE));
+        Thread::sleep(int(lastTime - t - TOLERANCE));
     }
     else if(t > lastTime + TOLERANCE) // slower then rt
       lastTime = t - TOLERANCE;
@@ -176,8 +221,8 @@ void RoboCupCtrl::update()
   gameController.referee();
 
   statusText = "";
-  for(std::list<Robot*>::iterator i = robots.begin(); i != robots.end(); ++i)
-    (*i)->update();
+  for(Robot* robot : robots)
+    robot->update();
   if(simTime)
     time += simStepLength;
 }
@@ -188,16 +233,16 @@ void RoboCupCtrl::collided(SimRobotCore2::Geometry& geom1, SimRobotCore2::Geomet
   if(!body)
     return;
   body = body->getRootBody();
-  GameController::setLastBallContactRobot(body);
+  controller->gameController.setLastBallContactRobot(body);
 }
 
 std::string RoboCupCtrl::getRobotName() const
 {
-  size_t threadId = Thread<ProcessBase>::getCurrentId();
-  for(std::list<Robot*>::const_iterator i = robots.begin(); i != robots.end(); ++i)
-    for(ProcessList::const_iterator j = (*i)->begin(); j != (*i)->end(); ++j)
-      if((*j)->getId() == threadId)
-        return (*i)->getName();
+  std::thread::id threadId = Thread::getCurrentId();
+  for(const Robot* robot : robots)
+    for(const ThreadFrame* thread : *robot)
+      if(thread->getId() == threadId)
+        return robot->getName();
   if(!this->robotName)
     return "Robot1";
   std::string robotName(this->robotName);
@@ -209,5 +254,5 @@ unsigned RoboCupCtrl::getTime() const
   if(simTime)
     return unsigned(time);
   else
-    return unsigned(SystemCall::getRealSystemTime() + time);
+    return unsigned(Time::getRealSystemTime() + time);
 }

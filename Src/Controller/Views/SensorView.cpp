@@ -1,18 +1,12 @@
 /**
-* @file Controller/Views/SensorView.cpp
-*
-* Implementation of class SensorView
-*
-* @author of the original sensorview <a href="mailto:Thomas.Roefer@dfki.de">Thomas Röfer</a>
-* @author Jeff
-* @author Colin Graf
-*/
-
-#include <QHeaderView>
-#include <QApplication>
-#include <QPainter>
-#include <QFontMetrics>
-#include <QSettings>
+ * @file Controller/Views/SensorView.cpp
+ *
+ * Implementation of class SensorView
+ *
+ * @author of the original sensorview Thomas Röfer
+ * @author Jeff
+ * @author Colin Graf
+ */
 
 #include "SensorView.h"
 #include "Controller/RobotConsole.h"
@@ -23,61 +17,8 @@
 #include "Representations/Infrastructure/SensorData/InertialSensorData.h"
 #include "Representations/Infrastructure/SensorData/KeyStates.h"
 #include "Representations/Infrastructure/SensorData/SystemSensorData.h"
-#include "Representations/Infrastructure/SensorData/UsSensorData.h"
 
 #include <algorithm>
-
-
-class SensorWidget : public QWidget
-{
-private:
-  enum class ValueType
-  {
-    acceleration, // m/s^2
-    angle,        // °
-    angularSpeed, // °/s^2
-    current,      // A
-    pressure,     // g
-    ratio,        // %
-    temperatur    // °C
-  };
-
-  SensorView& sensorView;
-  QHeaderView* headerView;
-
-  QPainter painter;
-  int lineSpacing;
-  int textOffset;
-
-  QFont font;
-  QBrush altBrush;
-  QPen fontPen;
-  QPen noPen;
-  bool fillBackground;
-
-  QRect paintRect;
-  QRect paintRectField0;
-  QRect paintRectField1;
-
-public:
-  SensorWidget(SensorView& sensorView, QHeaderView* headerView, QWidget* parent);
-  virtual ~SensorWidget();
-
-  void update();
-  void paintEvent(QPaintEvent* event);
-
-private:
-  void paintFsrSensorData();
-  void paintInertialSensorData();
-  void paintKeyStates();
-  void paintSystemSensorData();
-  QString printValue(ValueType valueType, float value) const;
-  QString printCoordinate(Vector2f val) const;
-  QString printButton(bool pressed) const;
-  void print(const QString& name, const QString& value);
-  void newSection();
-  QSize sizeHint() const { return QSize(250, 400); }
-};
 
 class SensorHeaderedWidget : public HeaderedWidget, public SimRobot::Widget
 {
@@ -85,23 +26,24 @@ private:
   SensorWidget* sensorWidget;
 
 public:
-  SensorHeaderedWidget(SensorView& sensorView, RobotConsole& console);
+  SensorHeaderedWidget(SensorView& sensorView);
 
 private:
-  virtual QWidget* getWidget() {return this;}
-  virtual void update() {sensorWidget->update();}
+  QWidget* getWidget() override { return this; }
+  void update() override{ sensorWidget->update(); }
 };
 
-SensorView::SensorView(const QString& fullName, RobotConsole& robotConsole, const FsrSensorData& fsrSensorData,
+SensorView::SensorView(const QString& fullName, RobotConsole& console, const FsrSensorData& fsrSensorData,
                        const InertialSensorData& inertialSensorData, const KeyStates& keyStates,
-                       const SystemSensorData& systemSensorData) :
-  fullName(fullName), icon(":/Icons/tag_green.png"), console(robotConsole), fsrSensorData(fsrSensorData),
-  inertialSensorData(inertialSensorData), keyStates(keyStates), systemSensorData(systemSensorData)
+                       const SystemSensorData& systemSensorData, const unsigned& timestamp) :
+  fullName(fullName), icon(":/Icons/tag_green.png"), console(console), fsrSensorData(fsrSensorData),
+  inertialSensorData(inertialSensorData), keyStates(keyStates), systemSensorData(systemSensorData),
+  timestamp(timestamp)
 {}
 
 SimRobot::Widget* SensorView::createWidget()
 {
-  return new SensorHeaderedWidget(*this, console);
+  return new SensorHeaderedWidget(*this);
 }
 
 SensorWidget::SensorWidget(SensorView& sensorView, QHeaderView* headerView, QWidget* parent) :
@@ -114,10 +56,6 @@ SensorWidget::SensorWidget(SensorView& sensorView, QHeaderView* headerView, QWid
   textOffset = fontMetrics.descent() + 1;
 
   font = QApplication::font();
-
-  const QPalette& pal(QApplication::palette());
-  altBrush = pal.alternateBase();
-  fontPen.setColor(pal.text().color());
 
   setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Expanding);
 
@@ -137,15 +75,19 @@ SensorWidget::~SensorWidget()
 
 void SensorWidget::update()
 {
-  // TODO The old implementation refused an update without a change in the sensor data. That may be a good idea
-  /*{
+  {
     SYNC_WITH(sensorView.console);
-    if(sensorView.sensorData.timeStamp == lastUpdateTimeStamp)
+    if(sensorView.timestamp == lastUpdateTimestamp)
       return;
     else
-      lastUpdateTimeStamp = sensorView.sensorData.timeStamp;
-  }*/
+      lastUpdateTimestamp = sensorView.timestamp;
+  }
 
+  QWidget::update();
+}
+
+void SensorWidget::forceUpdate()
+{
   QWidget::update();
 }
 
@@ -153,8 +95,8 @@ void SensorWidget::paintEvent(QPaintEvent* event)
 {
   painter.begin(this);
   painter.setFont(font);
-  painter.setBrush(altBrush);
-  painter.setPen(fontPen);
+  painter.setBrush(RoboCupCtrl::controller->getAlternateBackgroundColor());
+  painter.setPen(QApplication::palette().text().color());
   fillBackground = false;
 
   paintRect = painter.window();
@@ -178,16 +120,16 @@ void SensorWidget::paintFsrSensorData()
 {
   const FsrSensorData& data = sensorView.fsrSensorData;
   print("Fsr sensor data:", "");
-  print(" Fsr lfl", printValue(ValueType::pressure, data.left[FsrSensorData::fl]));
-  print(" Fsr lfr", printValue(ValueType::pressure, data.left[FsrSensorData::fr]));
-  print(" Fsr lbl", printValue(ValueType::pressure, data.left[FsrSensorData::bl]));
-  print(" Fsr lbr", printValue(ValueType::pressure, data.left[FsrSensorData::br]));
-  print(" Fsr rfl", printValue(ValueType::pressure, data.right[FsrSensorData::fl]));
-  print(" Fsr rfr", printValue(ValueType::pressure, data.right[FsrSensorData::fr]));
-  print(" Fsr rbl", printValue(ValueType::pressure, data.right[FsrSensorData::bl]));
-  print(" Fsr rbr", printValue(ValueType::pressure, data.right[FsrSensorData::br]));
-  print(" Fsr total left", printValue(ValueType::pressure, data.leftTotal));
-  print(" Fsr total right", printValue(ValueType::pressure, data.rightTotal));
+  print(" Fsr lfl", printValue(ValueType::pressure, data.pressures[Legs::left][FsrSensors::fl]));
+  print(" Fsr lfr", printValue(ValueType::pressure, data.pressures[Legs::left][FsrSensors::fr]));
+  print(" Fsr lbl", printValue(ValueType::pressure, data.pressures[Legs::left][FsrSensors::bl]));
+  print(" Fsr lbr", printValue(ValueType::pressure, data.pressures[Legs::left][FsrSensors::br]));
+  print(" Fsr rfl", printValue(ValueType::pressure, data.pressures[Legs::right][FsrSensors::fl]));
+  print(" Fsr rfr", printValue(ValueType::pressure, data.pressures[Legs::right][FsrSensors::fr]));
+  print(" Fsr rbl", printValue(ValueType::pressure, data.pressures[Legs::right][FsrSensors::bl]));
+  print(" Fsr rbr", printValue(ValueType::pressure, data.pressures[Legs::right][FsrSensors::br]));
+  print(" Fsr total left", printValue(ValueType::pressure, data.totals[Legs::left]));
+  print(" Fsr total right", printValue(ValueType::pressure, data.totals[Legs::right]));
 }
 
 void SensorWidget::paintInertialSensorData()
@@ -202,6 +144,7 @@ void SensorWidget::paintInertialSensorData()
   print(" Acc z", printValue(ValueType::acceleration, data.acc.z()));
   print(" Angle x", printValue(ValueType::angle, data.angle.x()));
   print(" Angle y", printValue(ValueType::angle, data.angle.y()));
+  print(" Angle z", printValue(ValueType::angle, data.angle.z()));
 }
 
 void SensorWidget::paintKeyStates()
@@ -217,10 +160,10 @@ void SensorWidget::paintKeyStates()
   print(" Right hand back", printButton(data.pressed[KeyStates::rHandBack]));
   print(" Right hand left", printButton(data.pressed[KeyStates::rHandLeft]));
   print(" Right hand right", printButton(data.pressed[KeyStates::rHandRight]));
-  print(" Left foot left", printButton(data.pressed[KeyStates::leftFootLeft]));
-  print(" Left foot right", printButton(data.pressed[KeyStates::leftFootRight]));
-  print(" Right foot left", printButton(data.pressed[KeyStates::rightFootLeft]));
-  print(" Right foot right", printButton(data.pressed[KeyStates::rightFootRight]));
+  print(" Left foot left", printButton(data.pressed[KeyStates::lFootLeft]));
+  print(" Left foot right", printButton(data.pressed[KeyStates::lFootRight]));
+  print(" Right foot left", printButton(data.pressed[KeyStates::rFootLeft]));
+  print(" Right foot right", printButton(data.pressed[KeyStates::rFootRight]));
   print(" Chest", printButton(data.pressed[KeyStates::chest]));
 }
 
@@ -228,10 +171,10 @@ void SensorWidget::paintSystemSensorData()
 {
   const SystemSensorData& data = sensorView.systemSensorData;
   print("System sensor data:", "");
-  print(" Cpu temperatur", printValue(ValueType::temperatur, data.cpuTemperature));
+  print(" Cpu temperature", printValue(ValueType::temperature, data.cpuTemperature));
   print(" Battery current", printValue(ValueType::current, data.batteryCurrent));
   print(" Battery level", printValue(ValueType::ratio, data.batteryLevel));
-  print(" Battery temperatur", printValue(ValueType::ratio, data.batteryTemperature));
+  print(" Battery temperature", printValue(ValueType::temperature, data.batteryTemperature * (data.batteryTemperature == SensorData::off ? 1.f : 10.f)));
 }
 
 QString SensorWidget::printValue(ValueType valueType, float value) const
@@ -261,7 +204,7 @@ QString SensorWidget::printValue(ValueType valueType, float value) const
       case ValueType::ratio:
         text = QString::number(value * 100.f, 'f', 1) + " %";
         break;
-      case ValueType::temperatur:
+      case ValueType::temperature:
         text = QString::number(value, 'f', 1) + " °C";
         break;
     }
@@ -285,7 +228,7 @@ void SensorWidget::print(const QString& name, const QString& value)
   {
     painter.setPen(noPen);
     painter.drawRect(paintRect.left(), paintRectField1.top(), paintRect.width(), paintRectField1.height());
-    painter.setPen(fontPen);
+    painter.setPen(QApplication::palette().text().color());
   }
   painter.drawText(paintRectField0, Qt::TextSingleLine | Qt::AlignVCenter, name);
   painter.drawText(paintRectField1, Qt::TextSingleLine | Qt::AlignVCenter | Qt::AlignRight, value);
@@ -303,7 +246,7 @@ void SensorWidget::newSection()
   fillBackground = false;
 }
 
-SensorHeaderedWidget::SensorHeaderedWidget(SensorView& sensorView, RobotConsole& console)
+SensorHeaderedWidget::SensorHeaderedWidget(SensorView& sensorView)
 {
   QStringList headerLabels;
   headerLabels << "Sensor" << "Value";
@@ -314,4 +257,5 @@ SensorHeaderedWidget::SensorHeaderedWidget(SensorView& sensorView, RobotConsole&
   headerView->resizeSection(1, 50);
   sensorWidget = new SensorWidget(sensorView, headerView, this);
   setWidget(sensorWidget);
+  connect(getHeaderView(), SIGNAL(sectionResized(int, int, int)), sensorWidget, SLOT(forceUpdate()));
 }

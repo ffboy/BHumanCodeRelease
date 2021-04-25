@@ -14,7 +14,6 @@
 #include "Tools/Streams/InStreams.h"
 #include <string>
 
-class Framework;
 class InMessage;
 
 /**
@@ -27,12 +26,12 @@ class DebugDataTable
 private:
   std::unordered_map<std::string, char*> table;
 
-  friend class Process; /**< A process is allowed to create the instance. */
-  friend class Framework; /**< A framework is allowed to create the instance. */
+  friend class ThreadFrame; /**< A thread is allowed to create the instance. */
 
   /**
-   * No other instance of this class is allowed except the one accessible via getDebugDataTable
-   * therefore the constructor is private.
+   * Default constructor.
+   * No other instance of this class is allowed except the one accessible via Global::getDebugDataTable.
+   * Therefore the constructor is private.
    */
   DebugDataTable() = default;
   DebugDataTable(const DebugDataTable&) = delete;
@@ -44,11 +43,11 @@ public:
    * Registers the object with the debug data table and updates the object if the
    * respective entry in the table has been modified through RobotControl.
    */
-  template<class T> void updateObject(const char* name, T& t, bool once);
-  void processChangeRequest(InMessage& in);
+  template<typename T> void updateObject(const char* name, T& t, bool once);
+  void threadChangeRequest(InMessage& in);
 };
 
-template<class T> void DebugDataTable::updateObject(const char* name, T& t, bool once)
+template<typename T> void DebugDataTable::updateObject(const char* name, T& t, bool once)
 {
   // Find entry in debug data table
   std::unordered_map<std::string, char*>::iterator iter = table.find(name);

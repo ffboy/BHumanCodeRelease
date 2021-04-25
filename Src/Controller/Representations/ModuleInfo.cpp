@@ -1,24 +1,25 @@
 /**
-* @file Controller/Representations/ModuleInfo.cpp
-*
-* Implementation of class ModuleInfo
-*
-* @author <a href="mailto:Thomas.Roefer@dfki.de">Thomas Röfer</a>
-*/
+ * @file Controller/Representations/ModuleInfo.cpp
+ *
+ * Implementation of class ModuleInfo
+ *
+ * @author Thomas Röfer
+ */
 
 #include "ModuleInfo.h"
 #include "Platform/BHAssert.h"
-#include "Platform/SystemCall.h"
+#include "Platform/Time.h"
 #include <algorithm>
 
 void ModuleInfo::clear()
 {
   modules.clear();
   representations.clear();
-  config.representationProviders.clear();
+  for(Configuration::Thread& thread : config())
+    thread.representationProviders.clear();
 }
 
-bool ModuleInfo::handleMessage(InMessage& message, char processIdentifier)
+bool ModuleInfo::handleMessage(InMessage& message)
 {
   if(message.getMessageID() == idModuleTable)
   {
@@ -27,7 +28,6 @@ bool ModuleInfo::handleMessage(InMessage& message, char processIdentifier)
     for(int i = 0; i < numOfModules; ++i)
     {
       Module module;
-      module.processIdentifier = processIdentifier;
       int numOfRequirements;
       unsigned char category;
       message.bin >> module.name >> category >> numOfRequirements;
@@ -52,7 +52,7 @@ bool ModuleInfo::handleMessage(InMessage& message, char processIdentifier)
       modules.insert(k, module);
     }
     message.bin >> config;
-    timeStamp = SystemCall::getCurrentSystemTime();
+    timestamp = Time::getCurrentSystemTime();
     return true;
   }
   else
@@ -62,7 +62,8 @@ bool ModuleInfo::handleMessage(InMessage& message, char processIdentifier)
 void ModuleInfo::sendRequest(Out& stream, bool sort)
 {
   if(sort)
-    std::sort(config.representationProviders.begin(), config.representationProviders.end());
+    for(Configuration::Thread& thread : config())
+      std::sort(thread.representationProviders.begin(), thread.representationProviders.end());
 
   stream << config;
 }

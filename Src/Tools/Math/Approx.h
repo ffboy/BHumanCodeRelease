@@ -12,14 +12,17 @@ namespace Approx
   template<typename T>
   bool isZero(T a, T prec = std::numeric_limits<T>::epsilon())
   {
-    return std::abs(a) < prec;
+    using std::abs;
+    return abs(a) < prec;
   }
 
   template<typename T>
   bool isEqual(T a, T b, T prec = std::numeric_limits<T>::epsilon())
   {
-    const T diff = std::abs(a - b);
-    return diff < prec || diff < prec * std::max(std::abs(a), std::abs(b));
+    using std::abs;
+    using std::max;
+    const T diff = abs(a - b);
+    return diff < prec || diff < prec * max(abs(a), abs(b));
   }
 
   /**
@@ -52,5 +55,30 @@ namespace Approx
       else
         return atan;
     }
+  }
+
+  /**
+   * An integer-math only approximation of atan2.
+   * Modified version of the Q15-implementation from http://geekshavefeelings.com/posts/fixed-point-atan2.
+   *
+   * @param y y coordinate as a short in the range [-16384, 16384)
+   * @param x x coordinate as a short in the range [-16384, 16384)
+   * @return atan2 of y and x as an unsigned short in the range [0,65536)
+   */
+  inline unsigned short atan2(const short y, const short x)
+  {
+    short quotient;
+    unsigned short offset;
+    if(std::abs(x) > std::abs(y))
+    {
+      quotient = static_cast<short>((y << 14) / x);
+      offset = x > 0 ? 0 : 32768;
+    }
+    else
+    {
+      quotient = x == 0 ? 0 : static_cast<short>(-1 * (x << 14) / y);
+      offset = y > 0 ? 16384 : 49152;
+    }
+    return offset + static_cast<unsigned short>((static_cast<int>(11039 - ((5695 * static_cast<int>(std::abs(quotient))) >> 15)) * static_cast<int>(quotient)) >> 15);
   }
 }

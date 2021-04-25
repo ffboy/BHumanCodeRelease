@@ -3,7 +3,7 @@
 #include "Utils/bush/models/Robot.h"
 #include "Utils/bush/models/Team.h"
 #include "Utils/bush/agents/PingAgent.h"
-#include "Utils/bush/agents/PowerAgent.h"
+#include "Utils/bush/agents/StatusAgent.h"
 #include "Utils/bush/cmdlib/IConsole.h"
 #include "Utils/bush/cmdlib/Context.h"
 #include <iostream>
@@ -12,8 +12,7 @@ Session::Session()
   : console(0),
     logLevel(ALL),
     pingAgent(0),
-    powerAgent(0),
-    robotsByName()
+    statusAgent(0)
 {
 }
 
@@ -22,9 +21,9 @@ std::string Session::getBestIP(const Context& context, const Robot* robot)
   std::string ip;
   Team* team = context.getSelectedTeam();
 
-  if(team->deployDevice == "wlan")
+  if(team->deployDevice == "Wi-Fi")
     ip = robot->wlan;
-  else if(team->deployDevice == "lan")
+  else if(team->deployDevice == "Ethernet")
     ip = robot->lan;
   else if(team->deployDevice == "auto")
   {
@@ -35,7 +34,7 @@ std::string Session::getBestIP(const Context& context, const Robot* robot)
       ip = robot->lan;
   }
   else
-    ASSERT(false);
+    FAIL("Unknown deploy device " << team->deployDevice << ".");
 
   return ip;
 }
@@ -72,9 +71,9 @@ bool Session::isReachable(const Context& context, const Robot* robot)
 {
   Team* team = context.getSelectedTeam();
 
-  if(team->deployDevice == "wlan")
+  if(team->deployDevice == "Wi-Fi")
     return pingAgent->getWLanPing(robot) < 2000.0;
-  else if(team->deployDevice == "lan")
+  else if(team->deployDevice == "Ethernet")
     return pingAgent->getLanPing(robot) < 2000.0;
   else
     return getBestNetwork(robot) != NONE;
@@ -106,14 +105,16 @@ void Session::removePingListener(QObject* qObject)
                       qObject, SLOT(setPings(ENetwork, std::map<std::string, double>*)));
 }
 
-void Session::registerPowerListener(QObject* qObject, Robot* robot)
+void Session::registerStatusListener(QObject* qObject, Robot* robot)
 {
-  if(powerAgent)
+  if(statusAgent)
   {
     log(TRACE, "Session: Registered power listener.");
-    QObject::connect(powerAgent, SIGNAL(powerChanged(std::map<std::string, Power>*)),
+    QObject::connect(statusAgent, SIGNAL(powerChanged(std::map<std::string, Power>*)),
                      qObject, SLOT(setPower(std::map<std::string, Power>*)));
-    powerAgent->reset(robot);
+    QObject::connect(statusAgent, SIGNAL(logsChanged(std::map<std::string, int>*)),
+                     qObject, SLOT(setLogs(std::map<std::string, int>*)));
+    statusAgent->reset(robot);
   }
   else
   {
@@ -121,10 +122,12 @@ void Session::registerPowerListener(QObject* qObject, Robot* robot)
   }
 }
 
-void Session::removePowerListener(QObject* qObject, Robot* robot)
+void Session::removeStatusListener(QObject* qObject, Robot* robot)
 {
   log(TRACE, "Session: Removed power listener.");
-  QObject::disconnect(powerAgent, SIGNAL(powerChanged(std::map<std::string, Power>*)),
+  QObject::disconnect(statusAgent, SIGNAL(powerChanged(std::map<std::string, Power>*)),
                       qObject, SLOT(setPower(std::map<std::string, Power>*)));
-  powerAgent->reset(robot);
+  QObject::disconnect(statusAgent, SIGNAL(logsChanged(std::map<std::string, int>*)),
+                      qObject, SLOT(setLogs(std::map<std::string, int>*)));
+  statusAgent->reset(robot);
 }

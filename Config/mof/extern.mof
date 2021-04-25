@@ -8,8 +8,10 @@ label start
 
 transition playDead playDead start
 transition sitDown sitDown start
-transition stand stand start
 transition standHigh standHigh start
+transition standHighLookUp standHighLookUp start
+
+transition getUpEngineDummy getUpEngineDummy start
 
 "This line must be the last one
 transition extern extern start

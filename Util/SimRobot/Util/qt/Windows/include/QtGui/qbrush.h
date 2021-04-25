@@ -1,7 +1,7 @@
 /****************************************************************************
 **
-** Copyright (C) 2015 The Qt Company Ltd.
-** Contact: http://www.qt.io/licensing/
+** Copyright (C) 2016 The Qt Company Ltd.
+** Contact: https://www.qt.io/licensing/
 **
 ** This file is part of the QtGui module of the Qt Toolkit.
 **
@@ -11,29 +11,27 @@
 ** accordance with the commercial license agreement provided with the
 ** Software or, alternatively, in accordance with the terms contained in
 ** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see http://www.qt.io/terms-conditions. For further
-** information use the contact form at http://www.qt.io/contact-us.
+** and conditions see https://www.qt.io/terms-conditions. For further
+** information use the contact form at https://www.qt.io/contact-us.
 **
 ** GNU Lesser General Public License Usage
 ** Alternatively, this file may be used under the terms of the GNU Lesser
-** General Public License version 2.1 or version 3 as published by the Free
-** Software Foundation and appearing in the file LICENSE.LGPLv21 and
-** LICENSE.LGPLv3 included in the packaging of this file. Please review the
-** following information to ensure the GNU Lesser General Public License
-** requirements will be met: https://www.gnu.org/licenses/lgpl.html and
-** http://www.gnu.org/licenses/old-licenses/lgpl-2.1.html.
-**
-** As a special exception, The Qt Company gives you certain additional
-** rights. These rights are described in The Qt Company LGPL Exception
-** version 1.1, included in the file LGPL_EXCEPTION.txt in this package.
+** General Public License version 3 as published by the Free Software
+** Foundation and appearing in the file LICENSE.LGPL3 included in the
+** packaging of this file. Please review the following information to
+** ensure the GNU Lesser General Public License version 3 requirements
+** will be met: https://www.gnu.org/licenses/lgpl-3.0.html.
 **
 ** GNU General Public License Usage
 ** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 3.0 as published by the Free Software
-** Foundation and appearing in the file LICENSE.GPL included in the
-** packaging of this file.  Please review the following information to
-** ensure the GNU General Public License version 3.0 requirements will be
-** met: http://www.gnu.org/copyleft/gpl.html.
+** General Public License version 2.0 or (at your option) the GNU General
+** Public license version 3 or any later version approved by the KDE Free
+** Qt Foundation. The licenses are as published by the Free Software
+** Foundation and appearing in the file LICENSE.GPL2 and LICENSE.GPL3
+** included in the packaging of this file. Please review the following
+** information to ensure the GNU General Public License requirements will
+** be met: https://www.gnu.org/licenses/gpl-2.0.html and
+** https://www.gnu.org/licenses/gpl-3.0.html.
 **
 ** $QT_END_LICENSE$
 **
@@ -42,6 +40,7 @@
 #ifndef QBRUSH_H
 #define QBRUSH_H
 
+#include <QtGui/qtguiglobal.h>
 #include <QtCore/qpair.h>
 #include <QtCore/qpoint.h>
 #include <QtCore/qvector.h>
@@ -52,20 +51,8 @@
 #include <QtGui/qimage.h>
 #include <QtGui/qpixmap.h>
 
-#if defined(Q_OS_VXWORKS)
-#  if defined(m_data)
-#    undef m_data
-#  endif
-#  if defined(m_type)
-#    undef m_type
-#  endif
-#endif
-
-QT_BEGIN_HEADER
-
 QT_BEGIN_NAMESPACE
 
-QT_MODULE(Gui)
 
 struct QBrushData;
 class QPixmap;
@@ -93,10 +80,11 @@ public:
     ~QBrush();
     QBrush &operator=(const QBrush &brush);
 #ifdef Q_COMPILER_RVALUE_REFS
-    inline QBrush &operator=(QBrush &&other)
+    inline QBrush &operator=(QBrush &&other) Q_DECL_NOEXCEPT
     { qSwap(d, other.d); return *this; }
 #endif
-    inline void swap(QBrush &other) { qSwap(d, other.d); }
+    inline void swap(QBrush &other) Q_DECL_NOEXCEPT
+    { qSwap(d, other.d); }
 
     operator QVariant() const;
 
@@ -126,16 +114,7 @@ public:
     bool operator==(const QBrush &b) const;
     inline bool operator!=(const QBrush &b) const { return !(operator==(b)); }
 
-#ifdef QT3_SUPPORT
-    inline QT3_SUPPORT operator const QColor&() const;
-    QT3_SUPPORT QPixmap *pixmap() const;
-    inline QT3_SUPPORT void setPixmap(const QPixmap &pixmap) { setTexture(pixmap); }
-#endif
-
 private:
-#if defined(Q_WS_X11)
-    friend class QX11PaintEngine;
-#endif
     friend class QRasterPaintEngine;
     friend class QRasterPaintEnginePrivate;
     friend struct QSpanData;
@@ -155,7 +134,6 @@ public:
 inline void QBrush::setColor(Qt::GlobalColor acolor)
 { setColor(QColor(acolor)); }
 
-Q_DECLARE_TYPEINFO(QBrush, Q_MOVABLE_TYPE);
 Q_DECLARE_SHARED(QBrush)
 
 /*****************************************************************************
@@ -183,11 +161,7 @@ inline Qt::BrushStyle QBrush::style() const { return d->style; }
 inline const QColor &QBrush::color() const { return d->color; }
 inline const QMatrix &QBrush::matrix() const { return d->transform.toAffine(); }
 inline QTransform QBrush::transform() const { return d->transform; }
-inline bool QBrush::isDetached() const { return d->ref == 1; }
-
-#ifdef QT3_SUPPORT
-inline QBrush::operator const QColor&() const { return d->color; }
-#endif
+inline bool QBrush::isDetached() const { return d->ref.load() == 1; }
 
 
 /*******************************************************************************
@@ -201,7 +175,6 @@ typedef QVector<QGradientStop> QGradientStops;
 class Q_GUI_EXPORT QGradient
 {
     Q_GADGET
-    Q_ENUMS(Type Spread CoordinateMode)
 public:
     enum Type {
         LinearGradient,
@@ -209,18 +182,21 @@ public:
         ConicalGradient,
         NoGradient
     };
+    Q_ENUM(Type)
 
     enum Spread {
         PadSpread,
         ReflectSpread,
         RepeatSpread
     };
+    Q_ENUM(Spread)
 
     enum CoordinateMode {
         LogicalMode,
         StretchToDeviceMode,
         ObjectBoundingMode
     };
+    Q_ENUM(CoordinateMode)
 
     enum InterpolationMode {
         ColorInterpolation,
@@ -249,8 +225,6 @@ public:
     inline bool operator!=(const QGradient &other) const
     { return !operator==(other); }
 
-    bool operator==(const QGradient &gradient); // ### Qt 5: remove
-
 private:
     friend class QLinearGradient;
     friend class QRadialGradient;
@@ -271,7 +245,7 @@ private:
             qreal cx, cy, angle;
         } conical;
     } m_data;
-    void *dummy;
+    void *dummy; // ### Qt 6: replace with actual content (CoordinateMode, InterpolationMode, ...)
 };
 
 inline void QGradient::setSpread(Spread aspread)
@@ -342,7 +316,5 @@ public:
 };
 
 QT_END_NAMESPACE
-
-QT_END_HEADER
 
 #endif // QBRUSH_H

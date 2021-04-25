@@ -1,7 +1,7 @@
 /****************************************************************************
 **
-** Copyright (C) 2015 The Qt Company Ltd.
-** Contact: http://www.qt.io/licensing/
+** Copyright (C) 2016 The Qt Company Ltd.
+** Contact: https://www.qt.io/licensing/
 **
 ** This file is part of the QtGui module of the Qt Toolkit.
 **
@@ -11,29 +11,27 @@
 ** accordance with the commercial license agreement provided with the
 ** Software or, alternatively, in accordance with the terms contained in
 ** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see http://www.qt.io/terms-conditions. For further
-** information use the contact form at http://www.qt.io/contact-us.
+** and conditions see https://www.qt.io/terms-conditions. For further
+** information use the contact form at https://www.qt.io/contact-us.
 **
 ** GNU Lesser General Public License Usage
 ** Alternatively, this file may be used under the terms of the GNU Lesser
-** General Public License version 2.1 or version 3 as published by the Free
-** Software Foundation and appearing in the file LICENSE.LGPLv21 and
-** LICENSE.LGPLv3 included in the packaging of this file. Please review the
-** following information to ensure the GNU Lesser General Public License
-** requirements will be met: https://www.gnu.org/licenses/lgpl.html and
-** http://www.gnu.org/licenses/old-licenses/lgpl-2.1.html.
-**
-** As a special exception, The Qt Company gives you certain additional
-** rights. These rights are described in The Qt Company LGPL Exception
-** version 1.1, included in the file LGPL_EXCEPTION.txt in this package.
+** General Public License version 3 as published by the Free Software
+** Foundation and appearing in the file LICENSE.LGPL3 included in the
+** packaging of this file. Please review the following information to
+** ensure the GNU Lesser General Public License version 3 requirements
+** will be met: https://www.gnu.org/licenses/lgpl-3.0.html.
 **
 ** GNU General Public License Usage
 ** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 3.0 as published by the Free Software
-** Foundation and appearing in the file LICENSE.GPL included in the
-** packaging of this file.  Please review the following information to
-** ensure the GNU General Public License version 3.0 requirements will be
-** met: http://www.gnu.org/copyleft/gpl.html.
+** General Public License version 2.0 or (at your option) the GNU General
+** Public license version 3 or any later version approved by the KDE Free
+** Qt Foundation. The licenses are as published by the Free Software
+** Foundation and appearing in the file LICENSE.GPL2 and LICENSE.GPL3
+** included in the packaging of this file. Please review the following
+** information to ensure the GNU General Public License requirements will
+** be met: https://www.gnu.org/licenses/gpl-2.0.html and
+** https://www.gnu.org/licenses/gpl-3.0.html.
 **
 ** $QT_END_LICENSE$
 **
@@ -42,29 +40,22 @@
 #ifndef QFONT_H
 #define QFONT_H
 
+#include <QtGui/qtguiglobal.h>
 #include <QtGui/qwindowdefs.h>
 #include <QtCore/qstring.h>
 #include <QtCore/qsharedpointer.h>
 
-#if defined(Q_WS_X11) || defined(Q_WS_QWS)
-typedef struct FT_FaceRec_* FT_Face;
-#endif
-
-QT_BEGIN_HEADER
 
 QT_BEGIN_NAMESPACE
 
-QT_MODULE(Gui)
 
 class QFontPrivate;                                     /* don't touch */
 class QStringList;
 class QVariant;
-class Q3TextFormatCollection;
 
 class Q_GUI_EXPORT QFont
 {
     Q_GADGET
-    Q_ENUMS(StyleStrategy)
 public:
     enum StyleHint {
         Helvetica,  SansSerif = Helvetica,
@@ -90,8 +81,10 @@ public:
         NoAntialias         = 0x0100,
         OpenGLCompatible    = 0x0200,
         ForceIntegerMetrics = 0x0400,
+        NoSubpixelAntialias = 0x0800,
         NoFontMerging       = 0x8000
     };
+    Q_ENUM(StyleStrategy)
 
     enum HintingPreference {
         PreferDefaultHinting        = 0,
@@ -100,12 +93,17 @@ public:
         PreferFullHinting           = 3
     };
 
+    // Mapping OpenType weight value.
     enum Weight {
-        Light    = 25,
-        Normal   = 50,
-        DemiBold = 63,
-        Bold     = 75,
-        Black    = 87
+        Thin     = 0,    // 100
+        ExtraLight = 12, // 200
+        Light    = 25,   // 300
+        Normal   = 50,   // 400
+        Medium   = 57,   // 500
+        DemiBold = 63,   // 600
+        Bold     = 75,   // 700
+        ExtraBold = 81,  // 800
+        Black    = 87    // 900
     };
 
     enum Style {
@@ -115,6 +113,7 @@ public:
     };
 
     enum Stretch {
+        AnyStretch     =   0,
         UltraCondensed =  50,
         ExtraCondensed =  62,
         Condensed      =  75,
@@ -165,6 +164,9 @@ public:
     QFont(const QFont &, QPaintDevice *pd);
     QFont(const QFont &);
     ~QFont();
+
+    void swap(QFont &other)
+    { qSwap(d, other.d); qSwap(resolve_mask, other.resolve_mask); }
 
     QString family() const;
     void setFamily(const QString &);
@@ -228,9 +230,10 @@ public:
     void setHintingPreference(HintingPreference hintingPreference);
     HintingPreference hintingPreference() const;
 
-    // is raw mode still needed?
+#if QT_DEPRECATED_SINCE(5, 5)
     bool rawMode() const;
     void setRawMode(bool);
+#endif
 
     // dupicated from QFontInfo
     bool exactMatch() const;
@@ -242,25 +245,15 @@ public:
     operator QVariant() const;
     bool isCopyOf(const QFont &) const;
 #ifdef Q_COMPILER_RVALUE_REFS
-    inline QFont &operator=(QFont &&other)
+    inline QFont &operator=(QFont &&other) Q_DECL_NOEXCEPT
     { qSwap(d, other.d); qSwap(resolve_mask, other.resolve_mask);  return *this; }
 #endif
 
-#ifdef Q_WS_WIN
-    HFONT handle() const;
-#else // !Q_WS_WIN
-    Qt::HANDLE handle() const;
-#endif // Q_WS_WIN
-#ifdef Q_WS_MAC
-    quint32 macFontID() const;
-#endif
-#if defined(Q_WS_X11) || defined(Q_WS_QWS)
-    FT_Face freetypeFace() const;
-#endif
-
+#if QT_DEPRECATED_SINCE(5, 3)
     // needed for X11
-    void setRawName(const QString &);
-    QString rawName() const;
+    QT_DEPRECATED void setRawName(const QString &);
+    QT_DEPRECATED QString rawName() const;
+#endif
 
     QString key() const;
 
@@ -272,12 +265,13 @@ public:
     static QStringList substitutions();
     static void insertSubstitution(const QString&, const QString &);
     static void insertSubstitutions(const QString&, const QStringList &);
-    static void removeSubstitution(const QString &);
+    static void removeSubstitutions(const QString &);
+#if QT_DEPRECATED_SINCE(5, 0)
+    static QT_DEPRECATED void removeSubstitution(const QString &family) { removeSubstitutions(family); }
+#endif
     static void initialize();
     static void cleanup();
-#ifndef Q_WS_QWS
     static void cacheStatistics();
-#endif
 
     QString defaultFamily() const;
     QString lastResortFamily() const;
@@ -287,25 +281,11 @@ public:
     inline uint resolve() const { return resolve_mask; }
     inline void resolve(uint mask) { resolve_mask = mask; }
 
-#ifdef QT3_SUPPORT
-    static QT3_SUPPORT QFont defaultFont();
-    static QT3_SUPPORT void setDefaultFont(const QFont &);
-    QT3_SUPPORT void setPixelSizeFloat(qreal);
-    QT3_SUPPORT qreal pointSizeFloat() const { return pointSizeF(); }
-    QT3_SUPPORT void setPointSizeFloat(qreal size) { setPointSizeF(size); }
-#endif
-
 private:
-    QFont(QFontPrivate *);
+    explicit QFont(QFontPrivate *);
 
     void detach();
 
-#if defined(Q_WS_MAC)
-    void macSetFont(QPaintDevice *);
-#elif defined(Q_WS_X11)
-    void x11SetScreen(int screen = -1);
-    int x11Screen() const;
-#endif
 
     friend class QFontPrivate;
     friend class QFontDialogPrivate;
@@ -314,17 +294,15 @@ private:
     friend class QFontInfo;
     friend class QPainter;
     friend class QPainterPrivate;
-    friend class QPSPrintEngineFont;
     friend class QApplication;
     friend class QWidget;
     friend class QWidgetPrivate;
-    friend class Q3TextFormatCollection;
     friend class QTextLayout;
     friend class QTextEngine;
     friend class QStackTextEngine;
     friend class QTextLine;
     friend struct QScriptLine;
-    friend class QGLContext;
+    friend class QOpenGLContext;
     friend class QWin32PaintEngine;
     friend class QAlphaPaintEngine;
     friend class QPainterPath;
@@ -344,9 +322,12 @@ private:
     uint resolve_mask;
 };
 
+Q_DECLARE_SHARED(QFont)
+
+Q_GUI_EXPORT uint qHash(const QFont &font, uint seed = 0) Q_DECL_NOTHROW;
 
 inline bool QFont::bold() const
-{ return weight() > Normal; }
+{ return weight() > Medium; }
 
 
 inline void QFont::setBold(bool enable)
@@ -376,7 +357,5 @@ Q_GUI_EXPORT QDebug operator<<(QDebug, const QFont &);
 #endif
 
 QT_END_NAMESPACE
-
-QT_END_HEADER
 
 #endif // QFONT_H

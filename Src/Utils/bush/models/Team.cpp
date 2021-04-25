@@ -27,11 +27,14 @@ Team::Team()
     number(0),
     port(0),
     color(""),
+    scenario(""),
     location(""),
     wlanConfig(""),
+    compile(true),
     buildConfig(""),
     volume(100),
-    deployDevice("")
+    deployDevice(""),
+    magicNumber(-1)
 {
   init();
 }
@@ -43,11 +46,14 @@ Team::Team(const std::string& name, unsigned short number)
     number(number),
     port(0),
     color(""),
+    scenario(""),
     location(""),
     wlanConfig(""),
+    compile(true),
     buildConfig(""),
     volume(100),
-    deployDevice("")
+    deployDevice(""),
+    magicNumber(-1)
 {
   init();
   this->port = number + 10000;
@@ -80,7 +86,7 @@ void Team::addPlayer(unsigned int playerNumber, bool  substitutePlayer, Robot& r
   selectedPlayers[&robot] = false;
 }
 
-std::vector<std::vector<Robot*> > Team::getPlayersPerNumber() const
+std::vector<std::vector<Robot*>> Team::getPlayersPerNumber() const
 {
   return players;
 }
@@ -134,16 +140,18 @@ void Team::changePlayer(unsigned short number, unsigned short pos, Robot* robot)
 
 void Team::serialize(In* in, Out* out)
 {
-  STREAM_REGISTER_BEGIN
   STREAM(name);
   STREAM(number);
   STREAM(port);
   STREAM(color);
+  STREAM(scenario);
   STREAM(location);
+  STREAM(compile);
   STREAM(buildConfig);
   STREAM(wlanConfig);
   STREAM(volume);
   STREAM(deployDevice);
+  STREAM(magicNumber);
   std::vector<std::string> players;
   if(out)
   {
@@ -159,7 +167,6 @@ void Team::serialize(In* in, Out* out)
       if(players[i] != "_")
         addPlayer(i % MAX_PLAYERS, i / MAX_PLAYERS, *robots[players[i]]);
   }
-  STREAM_REGISTER_FINISH
 }
 
 void Team::setSelectPlayer(Robot* robot, bool select)
@@ -210,21 +217,12 @@ unsigned short Team::getPlayerNumber(const Robot& robot) const
 
 void Team::writeTeams(Out& stream, const std::vector<Team>& teams)
 {
-  STREAMABLE(S,
-  {
-    S(std::vector<Team>& teams) : teams(teams) {},
-    (std::vector<Team>&) teams,
-  }) s(const_cast<std::vector<Team>&>(teams));
-  stream << s;
+  stream << TeamsStreamer(const_cast<std::vector<Team>&>(teams));
 }
 
 void Team::readTeams(In& stream, std::vector<Team>& teams)
 {
-  STREAMABLE(S,
-  {
-    S(std::vector<Team>& teams) : teams(teams) {},
-    (std::vector<Team>&) teams,
-  }) s(teams);
+  TeamsStreamer s(teams);
   stream >> s;
   for(Team& t : teams)
     Session::getInstance().log(TRACE, "Team: Loaded team \"" + t.name + "\".");

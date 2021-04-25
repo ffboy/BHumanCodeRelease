@@ -1,7 +1,7 @@
 /****************************************************************************
 **
-** Copyright (C) 2015 The Qt Company Ltd.
-** Contact: http://www.qt.io/licensing/
+** Copyright (C) 2016 The Qt Company Ltd.
+** Contact: https://www.qt.io/licensing/
 **
 ** This file is part of the QtCore module of the Qt Toolkit.
 **
@@ -11,29 +11,27 @@
 ** accordance with the commercial license agreement provided with the
 ** Software or, alternatively, in accordance with the terms contained in
 ** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see http://www.qt.io/terms-conditions. For further
-** information use the contact form at http://www.qt.io/contact-us.
+** and conditions see https://www.qt.io/terms-conditions. For further
+** information use the contact form at https://www.qt.io/contact-us.
 **
 ** GNU Lesser General Public License Usage
 ** Alternatively, this file may be used under the terms of the GNU Lesser
-** General Public License version 2.1 or version 3 as published by the Free
-** Software Foundation and appearing in the file LICENSE.LGPLv21 and
-** LICENSE.LGPLv3 included in the packaging of this file. Please review the
-** following information to ensure the GNU Lesser General Public License
-** requirements will be met: https://www.gnu.org/licenses/lgpl.html and
-** http://www.gnu.org/licenses/old-licenses/lgpl-2.1.html.
-**
-** As a special exception, The Qt Company gives you certain additional
-** rights. These rights are described in The Qt Company LGPL Exception
-** version 1.1, included in the file LGPL_EXCEPTION.txt in this package.
+** General Public License version 3 as published by the Free Software
+** Foundation and appearing in the file LICENSE.LGPL3 included in the
+** packaging of this file. Please review the following information to
+** ensure the GNU Lesser General Public License version 3 requirements
+** will be met: https://www.gnu.org/licenses/lgpl-3.0.html.
 **
 ** GNU General Public License Usage
 ** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 3.0 as published by the Free Software
-** Foundation and appearing in the file LICENSE.GPL included in the
-** packaging of this file.  Please review the following information to
-** ensure the GNU General Public License version 3.0 requirements will be
-** met: http://www.gnu.org/copyleft/gpl.html.
+** General Public License version 2.0 or (at your option) the GNU General
+** Public license version 3 or any later version approved by the KDE Free
+** Qt Foundation. The licenses are as published by the Free Software
+** Foundation and appearing in the file LICENSE.GPL2 and LICENSE.GPL3
+** included in the packaging of this file. Please review the following
+** information to ensure the GNU General Public License requirements will
+** be met: https://www.gnu.org/licenses/gpl-2.0.html and
+** https://www.gnu.org/licenses/gpl-3.0.html.
 **
 ** $QT_END_LICENSE$
 **
@@ -42,21 +40,19 @@
 #ifndef QFUTUREINTERFACE_H
 #define QFUTUREINTERFACE_H
 
-#include <QtCore/qglobal.h>
 #include <QtCore/qrunnable.h>
 
 #ifndef QT_NO_QFUTURE
 
 #include <QtCore/qmutex.h>
-#include <QtCore/qtconcurrentexception.h>
-#include <QtCore/qtconcurrentresultstore.h>
+#include <QtCore/qexception.h>
+#include <QtCore/qresultstore.h>
 
-QT_BEGIN_HEADER
 QT_BEGIN_NAMESPACE
 
-QT_MODULE(Core)
 
 template <typename T> class QFuture;
+class QThreadPool;
 class QFutureInterfaceBasePrivate;
 class QFutureWatcherBase;
 class QFutureWatcherBasePrivate;
@@ -83,11 +79,12 @@ public:
     void reportFinished();
     void reportCanceled();
 #ifndef QT_NO_EXCEPTIONS
-    void reportException(const QtConcurrent::Exception &e);
+    void reportException(const QException &e);
 #endif
     void reportResultsReady(int beginIndex, int endIndex);
 
     void setRunnable(QRunnable *runnable);
+    void setThreadPool(QThreadPool *pool);
     void setFilterMode(bool enable);
     void setProgressRange(int minimum, int maximum);
     int progressMinimum() const;
@@ -122,16 +119,17 @@ public:
     void waitForResume();
 
     QMutex *mutex() const;
-    QtConcurrent::internal::ExceptionStore &exceptionStore();
-    QtConcurrent::ResultStoreBase &resultStoreBase();
-    const QtConcurrent::ResultStoreBase &resultStoreBase() const;
+    QtPrivate::ExceptionStore &exceptionStore();
+    QtPrivate::ResultStoreBase &resultStoreBase();
+    const QtPrivate::ResultStoreBase &resultStoreBase() const;
 
     inline bool operator==(const QFutureInterfaceBase &other) const { return d == other.d; }
     inline bool operator!=(const QFutureInterfaceBase &other) const { return d != other.d; }
     QFutureInterfaceBase &operator=(const QFutureInterfaceBase &other);
 
 protected:
-    bool referenceCountIsOne() const;
+    bool refT() const;
+    bool derefT() const;
 public:
 
 #ifndef QFUTURE_TEST
@@ -150,14 +148,18 @@ class QFutureInterface : public QFutureInterfaceBase
 public:
     QFutureInterface(State initialState = NoState)
         : QFutureInterfaceBase(initialState)
-    { }
+    {
+        refT();
+    }
     QFutureInterface(const QFutureInterface &other)
         : QFutureInterfaceBase(other)
-    { }
+    {
+        refT();
+    }
     ~QFutureInterface()
     {
-        if (referenceCountIsOne())
-            resultStore().clear();
+        if (!derefT())
+            resultStoreBase().template clear<T>();
     }
 
     static QFutureInterface canceledResult()
@@ -165,8 +167,9 @@ public:
 
     QFutureInterface &operator=(const QFutureInterface &other)
     {
-        if (referenceCountIsOne())
-            resultStore().clear();
+        other.refT();
+        if (!derefT())
+            resultStoreBase().template clear<T>();
         QFutureInterfaceBase::operator=(other);
         return *this;
     }
@@ -181,11 +184,6 @@ public:
     inline const T &resultReference(int index) const;
     inline const T *resultPointer(int index) const;
     inline QList<T> results();
-private:
-    QtConcurrent::ResultStore<T> &resultStore()
-    { return static_cast<QtConcurrent::ResultStore<T> &>(resultStoreBase()); }
-    const QtConcurrent::ResultStore<T> &resultStore() const
-    { return static_cast<const QtConcurrent::ResultStore<T> &>(resultStoreBase()); }
 };
 
 template <typename T>
@@ -196,15 +194,14 @@ inline void QFutureInterface<T>::reportResult(const T *result, int index)
         return;
     }
 
-    QtConcurrent::ResultStore<T> &store = resultStore();
-
+    QtPrivate::ResultStoreBase &store = resultStoreBase();
 
     if (store.filterMode()) {
         const int resultCountBefore = store.count();
-        store.addResult(index, result);
+        store.addResult<T>(index, result);
         this->reportResultsReady(resultCountBefore, resultCountBefore + store.count());
     } else {
-        const int insertIndex = store.addResult(index, result);
+        const int insertIndex = store.addResult<T>(index, result);
         this->reportResultsReady(insertIndex, insertIndex + 1);
     }
 }
@@ -223,7 +220,7 @@ inline void QFutureInterface<T>::reportResults(const QVector<T> &_results, int b
         return;
     }
 
-    QtConcurrent::ResultStore<T> &store = resultStore();
+    auto &store = resultStoreBase();
 
     if (store.filterMode()) {
         const int resultCountBefore = store.count();
@@ -231,7 +228,7 @@ inline void QFutureInterface<T>::reportResults(const QVector<T> &_results, int b
         this->reportResultsReady(resultCountBefore, store.count());
     } else {
         const int insertIndex = store.addResults(beginIndex, &_results, count);
-        this->reportResultsReady(insertIndex, insertIndex + _results.count());    
+        this->reportResultsReady(insertIndex, insertIndex + _results.count());
     }
 }
 
@@ -247,14 +244,14 @@ template <typename T>
 inline const T &QFutureInterface<T>::resultReference(int index) const
 {
     QMutexLocker lock(mutex());
-    return resultStore().resultAt(index).value();
+    return resultStoreBase().resultAt(index).template value<T>();
 }
 
 template <typename T>
 inline const T *QFutureInterface<T>::resultPointer(int index) const
 {
     QMutexLocker lock(mutex());
-    return resultStore().resultAt(index).pointer();
+    return resultStoreBase().resultAt(index).template pointer<T>();
 }
 
 template <typename T>
@@ -269,9 +266,9 @@ inline QList<T> QFutureInterface<T>::results()
     QList<T> res;
     QMutexLocker lock(mutex());
 
-    QtConcurrent::ResultIterator<T> it = resultStore().begin();
-    while (it != resultStore().end()) {
-        res.append(it.value());
+    QtPrivate::ResultIteratorBase it = resultStoreBase().begin();
+    while (it != resultStoreBase().end()) {
+        res.append(it.value<T>());
         ++it;
     }
 
@@ -282,32 +279,22 @@ template <>
 class QFutureInterface<void> : public QFutureInterfaceBase
 {
 public:
-    QFutureInterface<void>(State initialState = NoState)
+    explicit QFutureInterface<void>(State initialState = NoState)
         : QFutureInterfaceBase(initialState)
-    { }
-    QFutureInterface<void>(const QFutureInterface<void> &other)
-        : QFutureInterfaceBase(other)
     { }
 
     static QFutureInterface<void> canceledResult()
     { return QFutureInterface(State(Started | Finished | Canceled)); }
 
-    QFutureInterface<void> &operator=(const QFutureInterface<void> &other)
-    {
-        QFutureInterfaceBase::operator=(other);
-        return *this;
-    }
 
     inline QFuture<void> future(); // implemented in qfuture.h
 
     void reportResult(const void *, int) { }
     void reportResults(const QVector<void> &, int) { }
-    void reportFinished(void * = 0) { QFutureInterfaceBase::reportFinished(); }
+    void reportFinished(const void * = Q_NULLPTR) { QFutureInterfaceBase::reportFinished(); }
 };
 
 QT_END_NAMESPACE
-QT_END_HEADER
-
-#endif // QT_NO_CONCURRENT
+#endif // QT_NO_QFUTURE
 
 #endif // QFUTUREINTERFACE_H

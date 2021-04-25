@@ -1,7 +1,7 @@
 /****************************************************************************
 **
-** Copyright (C) 2015 The Qt Company Ltd.
-** Contact: http://www.qt.io/licensing/
+** Copyright (C) 2016 The Qt Company Ltd.
+** Contact: https://www.qt.io/licensing/
 **
 ** This file is part of the QtCore module of the Qt Toolkit.
 **
@@ -11,29 +11,27 @@
 ** accordance with the commercial license agreement provided with the
 ** Software or, alternatively, in accordance with the terms contained in
 ** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see http://www.qt.io/terms-conditions. For further
-** information use the contact form at http://www.qt.io/contact-us.
+** and conditions see https://www.qt.io/terms-conditions. For further
+** information use the contact form at https://www.qt.io/contact-us.
 **
 ** GNU Lesser General Public License Usage
 ** Alternatively, this file may be used under the terms of the GNU Lesser
-** General Public License version 2.1 or version 3 as published by the Free
-** Software Foundation and appearing in the file LICENSE.LGPLv21 and
-** LICENSE.LGPLv3 included in the packaging of this file. Please review the
-** following information to ensure the GNU Lesser General Public License
-** requirements will be met: https://www.gnu.org/licenses/lgpl.html and
-** http://www.gnu.org/licenses/old-licenses/lgpl-2.1.html.
-**
-** As a special exception, The Qt Company gives you certain additional
-** rights. These rights are described in The Qt Company LGPL Exception
-** version 1.1, included in the file LGPL_EXCEPTION.txt in this package.
+** General Public License version 3 as published by the Free Software
+** Foundation and appearing in the file LICENSE.LGPL3 included in the
+** packaging of this file. Please review the following information to
+** ensure the GNU Lesser General Public License version 3 requirements
+** will be met: https://www.gnu.org/licenses/lgpl-3.0.html.
 **
 ** GNU General Public License Usage
 ** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 3.0 as published by the Free Software
-** Foundation and appearing in the file LICENSE.GPL included in the
-** packaging of this file.  Please review the following information to
-** ensure the GNU General Public License version 3.0 requirements will be
-** met: http://www.gnu.org/copyleft/gpl.html.
+** General Public License version 2.0 or (at your option) the GNU General
+** Public license version 3 or any later version approved by the KDE Free
+** Qt Foundation. The licenses are as published by the Free Software
+** Foundation and appearing in the file LICENSE.GPL2 and LICENSE.GPL3
+** included in the packaging of this file. Please review the following
+** information to ensure the GNU General Public License requirements will
+** be met: https://www.gnu.org/licenses/gpl-2.0.html and
+** https://www.gnu.org/licenses/gpl-3.0.html.
 **
 ** $QT_END_LICENSE$
 **
@@ -44,9 +42,9 @@
 
 #include <QtCore/qglobal.h>
 
-QT_BEGIN_HEADER
+#include <stdlib.h>
+
 QT_BEGIN_NAMESPACE
-QT_MODULE(Core)
 
 template <typename T>
 struct QScopedPointerDeleter
@@ -80,17 +78,26 @@ struct QScopedPointerArrayDeleter
 
 struct QScopedPointerPodDeleter
 {
-    static inline void cleanup(void *pointer) { if (pointer) qFree(pointer); }
+    static inline void cleanup(void *pointer) { if (pointer) free(pointer); }
 };
+
+#ifndef QT_NO_QOBJECT
+template <typename T>
+struct QScopedPointerObjectDeleteLater
+{
+    static inline void cleanup(T *pointer) { if (pointer) pointer->deleteLater(); }
+};
+
+class QObject;
+typedef QScopedPointerObjectDeleteLater<QObject> QScopedPointerDeleteLater;
+#endif
 
 template <typename T, typename Cleanup = QScopedPointerDeleter<T> >
 class QScopedPointer
 {
-#ifndef Q_CC_NOKIAX86
     typedef T *QScopedPointer:: *RestrictedBool;
-#endif
 public:
-    explicit inline QScopedPointer(T *p = 0) : d(p)
+    explicit QScopedPointer(T *p = Q_NULLPTR) Q_DECL_NOTHROW : d(p)
     {
     }
 
@@ -98,7 +105,6 @@ public:
     {
         T *oldD = this->d;
         Cleanup::cleanup(oldD);
-        this->d = 0;
     }
 
     inline T &operator*() const
@@ -107,40 +113,39 @@ public:
         return *d;
     }
 
-    inline T *operator->() const
+    T *operator->() const Q_DECL_NOTHROW
     {
-        Q_ASSERT(d);
         return d;
     }
 
-    inline bool operator!() const
+    bool operator!() const Q_DECL_NOTHROW
     {
         return !d;
     }
 
-#if defined(Q_CC_NOKIAX86) || defined(Q_QDOC)
+#if defined(Q_QDOC)
     inline operator bool() const
     {
-        return isNull() ? 0 : &QScopedPointer::d;
+        return isNull() ? Q_NULLPTR : &QScopedPointer::d;
     }
 #else
-    inline operator RestrictedBool() const
+    operator RestrictedBool() const Q_DECL_NOTHROW
     {
-        return isNull() ? 0 : &QScopedPointer::d;
+        return isNull() ? Q_NULLPTR : &QScopedPointer::d;
     }
 #endif
 
-    inline T *data() const
+    T *data() const Q_DECL_NOTHROW
     {
         return d;
     }
 
-    inline bool isNull() const
+    bool isNull() const Q_DECL_NOTHROW
     {
         return !d;
     }
 
-    inline void reset(T *other = 0)
+    void reset(T *other = Q_NULLPTR) Q_DECL_NOEXCEPT_EXPR(noexcept(Cleanup::cleanup(std::declval<T *>())))
     {
         if (d == other)
             return;
@@ -149,14 +154,14 @@ public:
         Cleanup::cleanup(oldD);
     }
 
-    inline T *take()
+    T *take() Q_DECL_NOTHROW
     {
         T *oldD = d;
-        d = 0;
+        d = Q_NULLPTR;
         return oldD;
     }
 
-    inline void swap(QScopedPointer<T, Cleanup> &other)
+    void swap(QScopedPointer<T, Cleanup> &other) Q_DECL_NOTHROW
     {
         qSwap(d, other.d);
     }
@@ -171,31 +176,44 @@ private:
 };
 
 template <class T, class Cleanup>
-inline bool operator==(const QScopedPointer<T, Cleanup> &lhs, const QScopedPointer<T, Cleanup> &rhs)
+inline bool operator==(const QScopedPointer<T, Cleanup> &lhs, const QScopedPointer<T, Cleanup> &rhs) Q_DECL_NOTHROW
 {
     return lhs.data() == rhs.data();
 }
 
 template <class T, class Cleanup>
-inline bool operator!=(const QScopedPointer<T, Cleanup> &lhs, const QScopedPointer<T, Cleanup> &rhs)
+inline bool operator!=(const QScopedPointer<T, Cleanup> &lhs, const QScopedPointer<T, Cleanup> &rhs) Q_DECL_NOTHROW
 {
     return lhs.data() != rhs.data();
 }
 
 template <class T, class Cleanup>
-Q_INLINE_TEMPLATE void qSwap(QScopedPointer<T, Cleanup> &p1, QScopedPointer<T, Cleanup> &p2)
-{ p1.swap(p2); }
-
-#ifndef QT_NO_STL
-QT_END_NAMESPACE
-namespace std {
-    template <class T, class Cleanup>
-    Q_INLINE_TEMPLATE void swap(QT_PREPEND_NAMESPACE(QScopedPointer)<T, Cleanup> &p1, QT_PREPEND_NAMESPACE(QScopedPointer)<T, Cleanup> &p2)
-    { p1.swap(p2); }
+inline bool operator==(const QScopedPointer<T, Cleanup> &lhs, std::nullptr_t) Q_DECL_NOTHROW
+{
+    return lhs.isNull();
 }
-QT_BEGIN_NAMESPACE
-#endif
 
+template <class T, class Cleanup>
+inline bool operator==(std::nullptr_t, const QScopedPointer<T, Cleanup> &rhs) Q_DECL_NOTHROW
+{
+    return rhs.isNull();
+}
+
+template <class T, class Cleanup>
+inline bool operator!=(const QScopedPointer<T, Cleanup> &lhs, std::nullptr_t) Q_DECL_NOTHROW
+{
+    return !lhs.isNull();
+}
+
+template <class T, class Cleanup>
+inline bool operator!=(std::nullptr_t, const QScopedPointer<T, Cleanup> &rhs) Q_DECL_NOTHROW
+{
+    return !rhs.isNull();
+}
+
+template <class T, class Cleanup>
+inline void swap(QScopedPointer<T, Cleanup> &p1, QScopedPointer<T, Cleanup> &p2) Q_DECL_NOTHROW
+{ p1.swap(p2); }
 
 
 namespace QtPrivate {
@@ -208,10 +226,10 @@ template <typename T, typename Cleanup = QScopedPointerArrayDeleter<T> >
 class QScopedArrayPointer : public QScopedPointer<T, Cleanup>
 {
 public:
-    inline QScopedArrayPointer() : QScopedPointer<T, Cleanup>(0) {}
+    inline QScopedArrayPointer() : QScopedPointer<T, Cleanup>(Q_NULLPTR) {}
 
     template <typename D>
-    explicit inline QScopedArrayPointer(D *p, typename QtPrivate::QScopedArrayEnsureSameType<T,D>::Type = 0)
+    explicit inline QScopedArrayPointer(D *p, typename QtPrivate::QScopedArrayEnsureSameType<T,D>::Type = Q_NULLPTR)
         : QScopedPointer<T, Cleanup>(p)
     {
     }
@@ -225,6 +243,9 @@ public:
     {
         return this->d[i];
     }
+
+    void swap(QScopedArrayPointer &other) Q_DECL_NOTHROW // prevent QScopedPointer <->QScopedArrayPointer swaps
+    { QScopedPointer<T, Cleanup>::swap(other); }
 
 private:
     explicit inline QScopedArrayPointer(void *) {
@@ -241,7 +262,10 @@ private:
     Q_DISABLE_COPY(QScopedArrayPointer)
 };
 
+template <typename T, typename Cleanup>
+inline void swap(QScopedArrayPointer<T, Cleanup> &lhs, QScopedArrayPointer<T, Cleanup> &rhs) Q_DECL_NOTHROW
+{ lhs.swap(rhs); }
+
 QT_END_NAMESPACE
-QT_END_HEADER
 
 #endif // QSCOPEDPOINTER_H

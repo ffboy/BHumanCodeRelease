@@ -1,7 +1,7 @@
 /****************************************************************************
 **
-** Copyright (C) 2015 The Qt Company Ltd.
-** Contact: http://www.qt.io/licensing/
+** Copyright (C) 2016 The Qt Company Ltd.
+** Contact: https://www.qt.io/licensing/
 **
 ** This file is part of the QtCore module of the Qt Toolkit.
 **
@@ -11,29 +11,27 @@
 ** accordance with the commercial license agreement provided with the
 ** Software or, alternatively, in accordance with the terms contained in
 ** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see http://www.qt.io/terms-conditions. For further
-** information use the contact form at http://www.qt.io/contact-us.
+** and conditions see https://www.qt.io/terms-conditions. For further
+** information use the contact form at https://www.qt.io/contact-us.
 **
 ** GNU Lesser General Public License Usage
 ** Alternatively, this file may be used under the terms of the GNU Lesser
-** General Public License version 2.1 or version 3 as published by the Free
-** Software Foundation and appearing in the file LICENSE.LGPLv21 and
-** LICENSE.LGPLv3 included in the packaging of this file. Please review the
-** following information to ensure the GNU Lesser General Public License
-** requirements will be met: https://www.gnu.org/licenses/lgpl.html and
-** http://www.gnu.org/licenses/old-licenses/lgpl-2.1.html.
-**
-** As a special exception, The Qt Company gives you certain additional
-** rights. These rights are described in The Qt Company LGPL Exception
-** version 1.1, included in the file LGPL_EXCEPTION.txt in this package.
+** General Public License version 3 as published by the Free Software
+** Foundation and appearing in the file LICENSE.LGPL3 included in the
+** packaging of this file. Please review the following information to
+** ensure the GNU Lesser General Public License version 3 requirements
+** will be met: https://www.gnu.org/licenses/lgpl-3.0.html.
 **
 ** GNU General Public License Usage
 ** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 3.0 as published by the Free Software
-** Foundation and appearing in the file LICENSE.GPL included in the
-** packaging of this file.  Please review the following information to
-** ensure the GNU General Public License version 3.0 requirements will be
-** met: http://www.gnu.org/copyleft/gpl.html.
+** General Public License version 2.0 or (at your option) the GNU General
+** Public license version 3 or any later version approved by the KDE Free
+** Qt Foundation. The licenses are as published by the Free Software
+** Foundation and appearing in the file LICENSE.GPL2 and LICENSE.GPL3
+** included in the packaging of this file. Please review the following
+** information to ensure the GNU General Public License requirements will
+** be met: https://www.gnu.org/licenses/gpl-2.0.html and
+** https://www.gnu.org/licenses/gpl-3.0.html.
 **
 ** $QT_END_LICENSE$
 **
@@ -44,28 +42,24 @@
 
 #include <QtCore/qfuture.h>
 
+#ifndef QT_NO_QFUTURE
+
 #include <QtCore/qobject.h>
 
-QT_BEGIN_HEADER
 QT_BEGIN_NAMESPACE
 
-QT_MODULE(Core)
 
 class QEvent;
 
 class QFutureWatcherBasePrivate;
-
-#ifdef QT_NO_QFUTURE
-class QFutureInterfaceBase;
-#endif
-
 class Q_CORE_EXPORT QFutureWatcherBase : public QObject
 {
     Q_OBJECT
     Q_DECLARE_PRIVATE(QFutureWatcherBase)
 
 public:
-    QFutureWatcherBase(QObject *parent = 0);
+    explicit QFutureWatcherBase(QObject *parent = Q_NULLPTR);
+    // de-inline dtor
 
     int progressValue() const;
     int progressMinimum() const;
@@ -82,7 +76,7 @@ public:
 
     void setPendingResultsLimit(int limit);
 
-    bool event(QEvent *event);
+    bool event(QEvent *event) Q_DECL_OVERRIDE;
 
 Q_SIGNALS:
     void started();
@@ -104,8 +98,8 @@ public Q_SLOTS:
     void togglePaused();
 
 protected:
-    void connectNotify (const char * signal);
-    void disconnectNotify (const char * signal);
+    void connectNotify (const QMetaMethod &signal) Q_DECL_OVERRIDE;
+    void disconnectNotify (const QMetaMethod &signal) Q_DECL_OVERRIDE;
 
     // called from setFuture() implemented in template sub-classes
     void connectOutputInterface();
@@ -117,13 +111,11 @@ private:
     virtual QFutureInterfaceBase &futureInterface() = 0;
 };
 
-#ifndef QT_NO_QFUTURE
-
 template <typename T>
 class QFutureWatcher : public QFutureWatcherBase
 {
 public:
-    QFutureWatcher(QObject *_parent = 0)
+    explicit QFutureWatcher(QObject *_parent = 0)
         : QFutureWatcherBase(_parent)
     { }
     ~QFutureWatcher()
@@ -136,7 +128,7 @@ public:
     T result() const { return m_future.result(); }
     T resultAt(int index) const { return m_future.resultAt(index); }
 
-#ifdef qdoc
+#ifdef Q_QDOC
     int progressValue() const;
     int progressMinimum() const;
     int progressMaximum() const;
@@ -174,8 +166,8 @@ public Q_SLOTS:
 
 private:
     QFuture<T> m_future;
-    const QFutureInterfaceBase &futureInterface() const { return m_future.d; }
-    QFutureInterfaceBase &futureInterface() { return m_future.d; }
+    const QFutureInterfaceBase &futureInterface() const Q_DECL_OVERRIDE { return m_future.d; }
+    QFutureInterfaceBase &futureInterface() Q_DECL_OVERRIDE { return m_future.d; }
 };
 
 template <typename T>
@@ -193,7 +185,7 @@ template <>
 class QFutureWatcher<void> : public QFutureWatcherBase
 {
 public:
-    QFutureWatcher(QObject *_parent = 0)
+    explicit QFutureWatcher(QObject *_parent = Q_NULLPTR)
         : QFutureWatcherBase(_parent)
     { }
     ~QFutureWatcher()
@@ -205,8 +197,8 @@ public:
 
 private:
     QFuture<void> m_future;
-    const QFutureInterfaceBase &futureInterface() const { return m_future.d; }
-    QFutureInterfaceBase &futureInterface() { return m_future.d; }
+    const QFutureInterfaceBase &futureInterface() const Q_DECL_OVERRIDE { return m_future.d; }
+    QFutureInterfaceBase &futureInterface() Q_DECL_OVERRIDE { return m_future.d; }
 };
 
 Q_INLINE_TEMPLATE void QFutureWatcher<void>::setFuture(const QFuture<void> &_future)
@@ -219,9 +211,7 @@ Q_INLINE_TEMPLATE void QFutureWatcher<void>::setFuture(const QFuture<void> &_fut
     connectOutputInterface();
 }
 
-#endif // QT_NO_QFUTURE
-
 QT_END_NAMESPACE
-QT_END_HEADER
+#endif // QT_NO_QFUTURE
 
 #endif // QFUTUREWATCHER_H

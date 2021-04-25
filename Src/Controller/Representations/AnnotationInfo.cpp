@@ -1,34 +1,54 @@
 /**
-* @file AnnotationInfo.cpp
-* @author <A href="mailto:andisto@tzi.de">Andreas Stolpmann</A>
-*/
+ * @file AnnotationInfo.cpp
+ * @author Andreas Stolpmann
+ */
 
 #include "AnnotationInfo.h"
 
 #include "Platform/BHAssert.h"
-#include "Platform/SystemCall.h"
+#include "Platform/Time.h"
 #include "Tools/Global.h"
 #include "Tools/MessageQueue/InMessage.h"
 #include "Tools/MessageQueue/OutMessage.h"
+#include "Controller/Views/AnnotationView.h"
 
-AnnotationInfo::AnnotationInfo() : timeOfLastMessage(0)
-{}
+#include <QRegExp>
 
-bool AnnotationInfo::handleMessage(InMessage& message)
+void AnnotationInfo::clear()
 {
-  if(message.getMessageID() == idAnnotation)
-  {
-    timeOfLastMessage = SystemCall::getCurrentSystemTime();
-    {
-      SYNC;
-      newAnnotations.push_back(AnnotationData());
-      AnnotationData& data = newAnnotations.back();
+  SYNC;
+  timeOfLastMessage = Time::getCurrentSystemTime();
+  newAnnotations.push_back(AnnotationData());
+  newAnnotations.back().name = "CLEAR";
+}
 
-      message.bin >> data.annotationNumber;
-      message.bin >> data.frame;
-      message.text >> data.name;
-      data.annotation = message.text.readAll();
+void AnnotationInfo::addMessage(InMessage& message, unsigned currentFrame)
+{
+  SYNC;
+  timeOfLastMessage = Time::getCurrentSystemTime();
+  newAnnotations.push_back(AnnotationData());
+  AnnotationData& data = newAnnotations.back();
+
+  message.bin >> data.annotationNumber;
+  if(!(data.annotationNumber & 0x80000000))
+    message.bin >> data.frame; // Compatibility with old annotations
+  data.annotationNumber &= ~0x80000000;
+  data.frame = currentFrame;
+  message.text >> data.name;
+  data.annotation = message.text.readAll();
+
+  if(view && view->stopOnFilter)
+  {
+    const QString name = QString(data.name.c_str()).toLower();
+    const QString annotation = QString(data.annotation.c_str()).toLower();
+
+    if(view->filterIsRegEx)
+    {
+      QRegExp regex(view->filter);
+      if(regex.exactMatch(name) || regex.exactMatch(annotation))
+        view->application->simStop();
     }
+    else if(name.contains(view->filter) || annotation.contains(view->filter))
+      view->application->simStop();
   }
-  return true;
 }

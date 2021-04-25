@@ -1,11 +1,11 @@
 /**
-* @file Controller/Views/View3D.cpp
-*
-* Implementation of class View3D
-*
-* @author <a href="mailto:Thomas.Roefer@dfki.de">Thomas Röfer</a>
-* @author Colin Graf
-*/
+ * @file Controller/Views/View3D.cpp
+ *
+ * Implementation of class View3D
+ *
+ * @author Thomas Röfer
+ * @author Colin Graf
+ */
 
 #include <Platform/OpenGL.h>
 #include "View3D.h"
@@ -18,34 +18,42 @@
 class View3DWidget : public QGLWidget, public SimRobot::Widget
 {
 public:
-  View3DWidget(View3D& view3D) : view3D(view3D), dragging(false)
+  View3DWidget(View3D& view3D) : view3D(view3D)
   {
     setFocusPolicy(Qt::StrongFocus);
 
     QSettings& settings = RoboCupCtrl::application->getLayoutSettings();
     settings.beginGroup(view3D.fullName);
-    rotation = settings.value("Rotation").toPointF();
+    rotation = QPointF(settings.value("RotationX").toFloat(), settings.value("RotationY").toFloat());
     settings.endGroup();
   }
 
-  virtual ~View3DWidget()
+  ~View3DWidget()
   {
     QSettings& settings = RoboCupCtrl::application->getLayoutSettings();
     settings.beginGroup(view3D.fullName);
-    settings.setValue("Rotation", rotation);
+    settings.setValue("RotationX", rotation.rx());
+    settings.setValue("RotationY", rotation.ry());
     settings.endGroup();
   }
 
 private:
-  void resizeGL(int newWidth, int newHeight)
+  QPointF rotation;
+  int width;
+  int height;
+  View3D& view3D;
+  bool dragging = false;
+  QPoint dragStart;
+
+  void resizeGL(int newWidth, int newHeight) override
   {
     width = newWidth;
     height = newHeight;
   }
 
-  void paintGL()
+  void paintGL() override
   {
-    GLdouble aspect = height ? (GLdouble) width / (GLdouble) height : (GLdouble) width;
+    GLdouble aspect = height ? static_cast<GLdouble>(width) / static_cast<GLdouble>(height) : static_cast<GLdouble>(width);
 
     glEnable(GL_LINE_SMOOTH);
     glEnable(GL_BLEND);
@@ -81,7 +89,7 @@ private:
     view3D.lastBackground = view3D.background;
   }
 
-  void mousePressEvent(QMouseEvent* event)
+  void mousePressEvent(QMouseEvent* event) override
   {
     QWidget::mousePressEvent(event);
 
@@ -92,14 +100,14 @@ private:
     }
   }
 
-  void mouseReleaseEvent(QMouseEvent* event)
+  void mouseReleaseEvent(QMouseEvent* event) override
   {
     QWidget::mouseReleaseEvent(event);
 
     dragging = false;
   }
 
-  void mouseMoveEvent(QMouseEvent* event)
+  void mouseMoveEvent(QMouseEvent* event) override
   {
     QWidget::mouseMoveEvent(event);
 
@@ -113,7 +121,7 @@ private:
     }
   }
 
-  void mouseDoubleClickEvent(QMouseEvent* event)
+  void mouseDoubleClickEvent(QMouseEvent* event) override
   {
     QWidget::mouseDoubleClickEvent(event);
 
@@ -121,7 +129,7 @@ private:
     updateGL();
   }
 
-  void wheelEvent(QWheelEvent* event)
+  void wheelEvent(QWheelEvent* event) override
   {
     if(event->delta())
     {
@@ -135,26 +143,20 @@ private:
       QGLWidget::wheelEvent(event);
   }
 
-  virtual QSize sizeHint() const { return QSize(320, 240); }
+  QSize sizeHint() const override { return QSize(320, 240); }
 
-  virtual QWidget* getWidget() {return this;}
+  QWidget* getWidget() override { return this; }
 
-  virtual void update()
+  void update() override
   {
     if(view3D.background != view3D.lastBackground || view3D.needsUpdate())
       QGLWidget::update();
   }
-
-  QPointF rotation;
-  int width;
-  int height;
-  View3D& view3D;
-  bool dragging;
-  QPoint dragStart;
 };
 
 View3D::View3D(const QString& fullName, const Vector3f& background) :
-  background(background), fullName(fullName), icon(":/Icons/tag_green.png") {}
+  background(background), fullName(fullName), icon(":/Icons/tag_green.png")
+{}
 
 SimRobot::Widget* View3D::createWidget()
 {

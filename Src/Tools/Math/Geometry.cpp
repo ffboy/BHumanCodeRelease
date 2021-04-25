@@ -9,11 +9,7 @@
 #include "Geometry.h"
 #include "Approx.h"
 #include "RotationMatrix.h"
-#include "Representations/Configuration/FieldDimensions.h"
-#include "Representations/Infrastructure/CameraInfo.h"
-#include "Representations/Infrastructure/Image.h"
 #include "Representations/Modeling/RobotPose.h"
-#include "Representations/Perception/CameraMatrix.h"
 #include "Tools/Math/BHMath.h"
 #include "Tools/Math/Eigen.h"
 #include <algorithm>
@@ -71,7 +67,7 @@ Geometry::Circle Geometry::getCircle(const Vector2i& point1, const Vector2i& poi
   return circle;
 }
 
-void Geometry::PixeledLine::calculatePixels(int x1, int y1, int x2, int y2)
+void Geometry::PixeledLine::calculatePixels(const int x1, const int y1, const int x2, const int y2, const int stepSize)
 {
   ASSERT(empty()); // only call from constructors
   if(x1 == x2 && y1 == y2)
@@ -82,8 +78,8 @@ void Geometry::PixeledLine::calculatePixels(int x1, int y1, int x2, int y2)
     {
       const int sign = sgn(x2 - x1);
       const int numberOfPixels = std::abs(x2 - x1) + 1;
-      reserve(numberOfPixels);
-      for(int x = 0; x < numberOfPixels; ++x)
+      reserve(numberOfPixels / stepSize);
+      for(int x = 0; x < numberOfPixels; x += stepSize)
       {
         const int y = x * (y2 - y1) / (x2 - x1);
         emplace_back(x1 + x * sign, y1 + y * sign);
@@ -93,8 +89,8 @@ void Geometry::PixeledLine::calculatePixels(int x1, int y1, int x2, int y2)
     {
       const int sign = sgn(y2 - y1);
       const int numberOfPixels = std::abs(y2 - y1) + 1;
-      reserve(numberOfPixels);
-      for(int y = 0; y < numberOfPixels; ++y)
+      reserve(numberOfPixels / stepSize);
+      for(int y = 0; y < numberOfPixels; y += stepSize)
       {
         const int x = y * (x2 - x1) / (y2 - y1);
         emplace_back(x1 + x * sign, y1 + y * sign);
@@ -235,8 +231,7 @@ float Geometry::getDistanceToEdge(const Line& line, const Vector2f& point)
   if(line.direction.x() == 0 && line.direction.y() == 0)
     return distance(point, line.base);
 
-  const float c = line.direction.dot(line.base);
-  const float d = (line.direction.dot(point) - c) / (line.direction.dot(line.direction));
+  const float d = (point - line.base).dot(line.direction) / line.direction.dot(line.direction);
 
   if(d < 0)
     return distance(point, line.base);
@@ -254,29 +249,6 @@ float Geometry::distance(const Vector2f& point1, const Vector2f& point2)
 float Geometry::distance(const Vector2i& point1, const Vector2i& point2)
 {
   return (point2 - point1).cast<float>().norm();
-}
-
-void Geometry::calculateAnglesForPoint(const Vector2f& point, const CameraMatrix& cameraMatrix,
-                                       const CameraInfo& cameraInfo, Vector2f& angles)
-{
-  const float factor = cameraInfo.focalLength;
-  const Vector3f vectorToPoint(factor, cameraInfo.opticalCenter.x() - point.x(), cameraInfo.opticalCenter.y() - point.y());
-  const Vector3f vectorToPointWorld = cameraMatrix.rotation * vectorToPoint;
-  angles.x() = atan2(vectorToPointWorld.y(), vectorToPointWorld.x());
-  angles.y() = atan2(vectorToPointWorld.z(), sqrt(sqr(vectorToPointWorld.x()) + sqr(vectorToPointWorld.y())));
-}
-
-bool Geometry::calculatePointByAngles(const Vector2f& angles, const CameraMatrix& cameraMatrix,
-                                      const CameraInfo& cameraInfo, Vector2f& point)
-{
-  const Vector3f vectorToPointWorld(cos(angles.x()), sin(angles.x()), tan(angles.y()));
-  const Vector3f vectorToPoint(cameraMatrix.rotation.inverse() * vectorToPointWorld);
-  if(vectorToPoint.x() <= 0)
-    return false;
-  const float scale = cameraInfo.focalLength / vectorToPoint.x();
-  point.x() = cameraInfo.opticalCenter.x() - vectorToPoint.y() * scale;
-  point.y() = cameraInfo.opticalCenter.y() - vectorToPoint.z() * scale;
-  return true;
 }
 
 bool Geometry::isPointInsideRectangle(const Vector2f& bottomLeftCorner, const Vector2f& topRightCorner, const Vector2f& point)
@@ -298,7 +270,7 @@ bool Geometry::isPointInsideRectangle(const Vector2i& bottomLeftCorner, const Ve
          bottomLeftCorner.y() <= point.y() && point.y() <= topRightCorner.y());
 }
 
-int Geometry::ccw(const Vector2f& p0, const Vector2f& p1, const Vector2f& p2)
+int ccw(const Vector2f& p0, const Vector2f& p1, const Vector2f& p2)
 {
   const float dx1 = p1.x() - p0.x();
   const float dy1 = p1.y() - p0.y();
@@ -330,6 +302,25 @@ bool Geometry::isPointInsideConvexPolygon(const Vector2f polygon[], const int nu
       return false;
   }
   return true;
+}
+
+bool Geometry::isPointInsidePolygon(const Vector3f& point, const std::vector<Vector3f>& V)
+{
+  int i, j = static_cast<int>(V.size()) - 1;
+  bool oddNodes = false;
+
+  for(i = 0; i < static_cast<int>(V.size()); ++i)
+  {
+    if((V[i].y() < point.y() && V[j].y() >= point.y()) || (V[j].y() < point.y() && V[i].y() >= point.y()))
+    {
+      if(V[i].x() + (point.y() - V[i].y()) / (V[j].y() - V[i].y()) * (V[j].x() - V[i].x()) < point.x())
+      {
+        oddNodes = !oddNodes;
+      }
+    }
+    j = i;
+  }
+  return oddNodes;
 }
 
 bool Geometry::checkIntersectionOfLines(const Vector2f& l1p1, const Vector2f& l1p2, const Vector2f& l2p1, const Vector2f& l2p2)
@@ -522,13 +513,13 @@ bool Geometry::getIntersectionPointsOfLineAndRectangle(const Vector2f& bottomLef
   }
 }
 
-#define CLIPLEFT  1  // 0001
-#define CLIPRIGHT 2  // 0010
-#define CLIPLOWER 4  // 0100
-#define CLIPUPPER 8  // 1000
-
 bool Geometry::clipLineWithRectangleCohenSutherland(const Vector2i& topLeft, const Vector2i& bottomRight, Vector2i& point1, Vector2i& point2)
 {
+  constexpr int CLIPLEFT = 0b0001;
+  constexpr int CLIPRIGHT = 0b0010;
+  constexpr int CLIPLOWER = 0b0100;
+  constexpr int CLIPUPPER = 0b1000;
+
   int K1 = 0, K2 = 0;
 
   const int dx = point2.x() - point1.x();
@@ -615,196 +606,6 @@ bool Geometry::clipLineWithRectangleCohenSutherland(const Vector2i& topLeft, con
   return true;
 }
 
-int Geometry::intersection(int a1, int b1, int a2, int b2, int value)
-{
-  if(a2 - a1 != 0)
-    return static_cast<int>(b1 + static_cast<float>((value - a1)) / (a2 - a1) * (b2 - b1));
-  else
-    return 32767;
-}
-
-bool Geometry::calculateBallInImage(const Vector2f& ballOffset, const CameraMatrix& cameraMatrix, const CameraInfo& cameraInfo, float ballRadius, Circle& circle)
-{
-  const Vector2f offset = ballOffset - cameraMatrix.translation.head<2>();
-  const float distance = offset.norm();
-  const float height = cameraMatrix.translation.z() - ballRadius;
-  const float cameraDistance = sqrt(sqr(distance) + sqr(height));
-  circle.center = Vector2f(atan2(offset.y(), offset.x()), -atan2(height, distance));
-  if(cameraDistance >= ballRadius)
-  {
-    const float alpha = pi_2 - circle.center.y() - acos(ballRadius / cameraDistance);
-    const float yBottom = -atan2(height + cos(alpha) * ballRadius, distance - sin(alpha) * ballRadius);
-    const float beta = pi_2 - circle.center.y() + acos(ballRadius / cameraDistance);
-    const float yTop = -atan2(height + cos(beta) * ballRadius, distance - sin(beta) * ballRadius);
-    Vector2f top, bottom;
-    if(!calculatePointByAngles(Vector2f(circle.center.x(), yTop), cameraMatrix, cameraInfo, top))
-      return false;
-    if(!calculatePointByAngles(Vector2f(circle.center.x(), yBottom), cameraMatrix, cameraInfo, bottom))
-      return false;
-    circle.center = (top + bottom) / 2.0f;
-    circle.radius = (top - bottom).norm() / 2.0f;
-    return true;
-  }
-  else
-    return false;
-}
-
-void Geometry::computeFieldOfViewInFieldCoordinates(const RobotPose& robotPose, const CameraMatrix& cameraMatrix,
-    const CameraInfo& cameraInfo, const FieldDimensions& fieldDimensions, std::vector<Vector2f>& p)
-{
-  if(p.size() < 4)
-    p.resize(4);
-  const Vector3f vectorToCenter(1, 0, 0);
-
-  RotationMatrix r(cameraMatrix.rotation);
-  r.rotateY(cameraInfo.openingAngleHeight / 2);
-  r.rotateZ(cameraInfo.openingAngleWidth / 2);
-  Vector3f vectorToCenterWorld = r * vectorToCenter;
-
-  const float a1 = cameraMatrix.translation.x();
-  const float a2 = cameraMatrix.translation.y();
-  const float a3 = cameraMatrix.translation.z();
-  float b1 = vectorToCenterWorld.x(),
-        b2 = vectorToCenterWorld.y(),
-        b3 = vectorToCenterWorld.z(),
-        f = a3 / b3;
-  Vector2f pof = Vector2f(a1 - f * b1, a2 - f * b2);
-
-  if(f > 0.f)
-    p[0] = robotPose.translation;
-  else
-    p[0] = (robotPose + pof).translation;
-
-  r = cameraMatrix.rotation;
-  r.rotateY(cameraInfo.openingAngleHeight / 2);
-  r.rotateZ(-(cameraInfo.openingAngleWidth / 2));
-  vectorToCenterWorld = r * vectorToCenter;
-
-  b1 = vectorToCenterWorld.x();
-  b2 = vectorToCenterWorld.y();
-  b3 = vectorToCenterWorld.z();
-  f = a3 / b3;
-  pof = Vector2f(a1 - f * b1, a2 - f * b2);
-
-  if(f > 0.f)
-    p[1] = robotPose.translation;
-  else
-    p[1] = (robotPose + pof).translation;
-
-  r = cameraMatrix.rotation;
-  r.rotateY(-(cameraInfo.openingAngleHeight / 2));
-  r.rotateZ(-(cameraInfo.openingAngleWidth / 2));
-  vectorToCenterWorld = r * vectorToCenter;
-
-  b1 = vectorToCenterWorld.x();
-  b2 = vectorToCenterWorld.y();
-  b3 = vectorToCenterWorld.z();
-  f = a3 / b3;
-  pof = Vector2f(a1 - f * b1, a2 - f * b2);
-
-  const float maxDist = std::sqrt(4.f * fieldDimensions.xPosOpponentFieldBorder * fieldDimensions.xPosOpponentFieldBorder +
-                                  4.f * fieldDimensions.yPosLeftFieldBorder * fieldDimensions.yPosLeftFieldBorder);
-  if(f > 0.f)
-    p[2] = robotPose.translation + Vector2f(maxDist, 0).rotate(robotPose.rotation + (-cameraInfo.openingAngleWidth / 2) + cameraMatrix.rotation.getZAngle());
-  else
-    p[2] = (robotPose + pof).translation;
-
-  r = cameraMatrix.rotation;
-  r.rotateY(-(cameraInfo.openingAngleHeight / 2));
-  r.rotateZ(cameraInfo.openingAngleWidth / 2);
-  vectorToCenterWorld = r * vectorToCenter;
-
-  b1 = vectorToCenterWorld.x();
-  b2 = vectorToCenterWorld.y();
-  b3 = vectorToCenterWorld.z();
-  f = a3 / b3;
-  pof = Vector2f(a1 - f * b1, a2 - f * b2);
-
-  if(f > 0.f)
-    p[3] = robotPose.translation + Vector2f(maxDist, 0).rotate(robotPose.rotation + (cameraInfo.openingAngleWidth / 2) + cameraMatrix.rotation.getZAngle());
-  else
-    p[3] = (robotPose + pof).translation;
-}
-
-float Geometry::angleSizeToPixelSize(float angleSize, const CameraInfo& cameraInfo)
-{
-  return cameraInfo.focalLength * tan(angleSize);
-}
-
-float Geometry::pixelSizeToAngleSize(float pixelSize, const CameraInfo& cameraInfo)
-{
-  return atan(pixelSize * cameraInfo.focalLengthInv);
-}
-
-float Geometry::getDistanceBySize(const CameraInfo& cameraInfo, float sizeInReality, float sizeInPixels)
-{
-  const float xFactor = cameraInfo.focalLength;
-  return sizeInReality * xFactor / (sizeInPixels + 0.000001f);
-}
-
-float Geometry::getDistanceBySize(const CameraInfo& cameraInfo, float sizeInReality,
-                                  float sizeInPixels, float centerX, float centerY)
-{
-  const float mx = centerX;
-  const float my = centerY;
-  const float cx = cameraInfo.opticalCenter.x();
-  const float cy = cameraInfo.opticalCenter.y();
-  const float focalLenPow2 = cameraInfo.focalLenPow2;
-  const float sqrImgRadius = (mx - cx) * (mx - cx) + (my - cy) * (my - cy);
-  const float imgDistance = sqrt(focalLenPow2 + sqrImgRadius);
-  return imgDistance * sizeInReality / (sizeInPixels + 0.000001f);
-}
-
-float Geometry::getSizeByDistance(const CameraInfo& cameraInfo, float sizeInReality, float distance)
-{
-  const float xFactor = cameraInfo.focalLength;
-  return sizeInReality / distance * xFactor;
-}
-
-Geometry::Line Geometry::calculateHorizon(const CameraMatrix& cameraMatrix, const CameraInfo& cameraInfo)
-{
-  const RowVector3f bottomRow = cameraMatrix.rotation.bottomRows(1);
-  const float r31 = bottomRow.x();
-  const float r32 = bottomRow.y();
-  const float r33 = bottomRow.z() == 0 ? 0.00001f : bottomRow.z();
-
-  const float v1 = cameraInfo.focalLength;
-  const float v2 = cameraInfo.opticalCenter.x();
-  const float v3 = cameraInfo.opticalCenter.y();
-  float x1 = 0;
-  float x2 = static_cast<float>(cameraInfo.width - 1);
-  float y1 = (v3 * r33 + r31 * v1 + r32 * v2) / r33;
-  float y2 = (v3 * r33 + r31 * v1 - r32 * v2) / r33;
-
-  // Mirror ends of horizon if Camera rotated to the left
-  if((cameraMatrix.rotation * Vector3f(0, 0, 1)).z() < 0)
-  {
-    float t = x1;
-    x1 = x2;
-    x2 = t;
-    t = y1;
-    y1 = y2;
-    y2 = t;
-  }
-
-  Line horizon;
-  horizon.base.x() = (x1 + x2) / 2.f;
-  horizon.base.y() = (y1 + y2) / 2.f;
-  horizon.direction.x() = x2 - x1;
-  horizon.direction.y() = y2 - y1;
-  horizon.normalizeDirection();
-  return horizon;
-}
-
-void Geometry::linspaced(const Vector2f& start, const Vector2f& stop, unsigned count, std::vector<Vector2f>& out)
-{
-  out.resize(count);
-  const Vector2f distance = stop - start;
-  const Vector2f dt = distance / (static_cast<float>(count) - 1.f);
-  for(unsigned i = 0; i < count; ++i)
-    out[i] = start + dt * static_cast<float>(i);
-}
-
 bool Geometry::isPointInsideTriangle(const float x1, const float y1, const float x2, const float y2,
                                      const float x3, const float y3, const float px, const float py)
 {
@@ -815,4 +616,97 @@ bool Geometry::isPointInsideTriangle(const float x1, const float y1, const float
                      ((y2 - y3) * (x1 - x3) + (x3 - x2) * (y1 - y3));
   const float gamma = 1.0f - alpha - beta;
   return alpha > 0 && beta > 0 && gamma > 0;
+}
+
+// from http://geomalgorithms.com/a07-_distance.html:
+// Copyright 2001 softSurfer, 2012 Dan Sunday
+// This code may be freely used, distributed and modified for any purpose
+// providing that this copyright notice is included with it.
+// SoftSurfer makes no warranty for this code, and cannot be held
+// liable for any real or imagined damage resulting from its use.
+// Users of this code must verify correctness for their application.
+float Geometry::distance(const LineSegment3D& S1, const LineSegment3D& S2, LineSegment3D& SE)
+{
+  const Vector3f u = S1.P1 - S1.P0;
+  const Vector3f v = S2.P1 - S2.P0;
+  const Vector3f w = S1.P0 - S2.P0;
+  const float a = u.norm();         // always >= 0
+  const float b = u.dot(v);
+  const float c = v.norm();         // always >= 0
+  const float d = u.dot(w);
+  const float e = v.dot(w);
+  const float D = a * c - b * b;    // always >= 0
+  float sN, sD = D;       // sc = sN / sD, default sD = D >= 0
+  float tN, tD = D;       // tc = tN / tD, default tD = D >= 0
+
+  // compute the line parameters of the two closest points
+  if(Approx::isZero(D))   // the lines are almost parallel
+  {
+    sN = 0.0;         // force using point P0 on segment S1
+    sD = 1.0;         // to prevent possible division by 0.0 later
+    tN = e;
+    tD = c;
+  }
+  else                   // get the closest points on the infinite lines
+  {
+    sN = (b * e - c * d);
+    tN = (a * e - b * d);
+    if(sN < 0.0)          // sc < 0 => the s=0 edge is visible
+    {
+      sN = 0.0;
+      tN = e;
+      tD = c;
+    }
+    else if(sN > sD)    // sc > 1  => the s=1 edge is visible
+    {
+      sN = sD;
+      tN = e + b;
+      tD = c;
+    }
+  }
+
+  if(tN < 0.0)              // tc < 0 => the t=0 edge is visible
+  {
+    tN = 0.0;
+    // recompute sc for this edge
+    if(-d < 0.0)
+      sN = 0.0;
+    else if(-d > a)
+      sN = sD;
+    else
+    {
+      sN = -d;
+      sD = a;
+    }
+  }
+  else if(tN > tD)        // tc > 1  => the t=1 edge is visible
+  {
+    tN = tD;
+    // recompute sc for this edge
+    if((-d + b) < 0.0)
+      sN = 0;
+    else if((-d + b) > a)
+      sN = sD;
+    else
+    {
+      sN = (-d + b);
+      sD = a;
+    }
+  }
+  // finally do the division to get sc and tc
+  const float sc = (Approx::isZero(sN) ? 0.f : sN / sD);
+  const float tc = (Approx::isZero(tN) ? 0.f : tN / tD);
+
+  // get the difference of the two closest points
+  const Vector3f dP = w + (sc * u) - (tc * v);  // =  S1(sc) - S2(tc)
+
+  SE.P0 = S1.P0 + sc * u;
+  SE.P1 = S2.P0 + tc * v;
+
+  return dP.norm();   // return the closest distance
+}
+
+bool Geometry::isPointLeftOfLine(const Vector2f& start, const Vector2f& end, const Vector2f& point)
+{
+  return ((end.x() - start.x()) * (point.y() - start.y()) - (end.y() - start.y()) * (point.x() - start.x())) > 0.f;
 }

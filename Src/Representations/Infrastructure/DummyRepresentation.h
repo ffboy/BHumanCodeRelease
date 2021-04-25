@@ -13,3 +13,7 @@ STREAMABLE(DummyRepresentation,
 {,
   (int)(0) dummy, /**< Yeah! */
 });
+
+STREAMABLE_WITH_BASE(DummyRepresentation2, DummyRepresentation,
+{,
+});

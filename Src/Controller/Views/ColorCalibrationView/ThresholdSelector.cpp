@@ -10,14 +10,14 @@
 
 #include <QHBoxLayout>
 
-ThresholdSelector::ThresholdSelector(const QString& name, ColorCalibrationWidget* parent,
-                                     int min, int max)
-: QGroupBox(name, parent), parent(parent)
+ThresholdSelector::ThresholdSelector(const QString& name, ColorCalibrationWidget* parent, int min, int max) :
+  QGroupBox(name, parent), parent(parent)
 {
   slider = new QSlider(Qt::Orientation::Horizontal, this);
   slider->setMinimum(min);
   slider->setMaximum(max);
   slider->setTickPosition(QSlider::TicksBothSides);
+  slider->setTickInterval(10);
 
   lineEdit = new QLineEdit(QString::number(min), this);
   lineEdit->setFixedWidth(40);
@@ -35,30 +35,10 @@ ThresholdSelector::ThresholdSelector(const QString& name, ColorCalibrationWidget
   layout->addWidget(slider);
 }
 
-void ThresholdSelector::updateWidgets()
-{
-  if(parent->currentColor == ColorClasses::white)
-  {
-    setEnabled(true);
-    updateSlider(parent->colorCalibrationView.console.colorCalibration.white);
-  }
-  else
-    setEnabled(false);
-}
-
 void ThresholdSelector::setEnabled(bool value)
 {
   slider->setEnabled(value);
   lineEdit->setEnabled(value);
-}
-
-void ThresholdSelector::updateColorCalibration(int value)
-{
-  if(parent->currentColor == ColorClasses::white)
-  {
-    updateColorCalibration(value, parent->colorCalibrationView.console.colorCalibration.white);
-    parent->colorCalibrationView.console.colorCalibrationChanged = true;
-  }
 }
 
 void ThresholdSelector::sliderChanged(int value)
@@ -70,4 +50,30 @@ void ThresholdSelector::sliderChanged(int value)
 void ThresholdSelector::lineEditChanged(QString value)
 {
   slider->setValue(value.toInt());
+}
+
+void ColorSelector::updateWidgets()
+{
+  setEnabled(true);
+  setTitle("Color Delimiter");
+  updateSlider(parent->colorCalibrationView.console.colorCalibration.maxNonColorSaturation);
+}
+
+void ColorSelector::updateColorCalibration(int value)
+{
+  ThresholdSelector::updateColorCalibration(value, parent->colorCalibrationView.console.colorCalibration.maxNonColorSaturation);
+  parent->colorCalibrationView.console.colorCalibrationChanged = true;
+}
+
+void BlackWhiteSelector::updateWidgets()
+{
+  setEnabled(true);
+  setTitle("Black-White Delimiter");
+  updateSlider(parent->colorCalibrationView.console.colorCalibration.blackWhiteDelimiter);
+}
+
+void BlackWhiteSelector::updateColorCalibration(int value)
+{
+  ThresholdSelector::updateColorCalibration(value, parent->colorCalibrationView.console.colorCalibration.blackWhiteDelimiter);
+  parent->colorCalibrationView.console.colorCalibrationChanged = true;
 }

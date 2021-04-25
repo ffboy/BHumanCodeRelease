@@ -1,13 +1,18 @@
-#include <QCloseEvent>
-#include <QMenu>
 #include <QApplication>
 #include <QClipboard>
-#include <QSvgGenerator>
+#include <QCloseEvent>
+#include <QColor>
 #include <QFileDialog>
+#include <QMenu>
 #include <QPainter>
+#include <QSvgGenerator>
 
 #include "RegisteredDockWidget.h"
 #include "MainWindow.h"
+
+#ifdef FIX_MACOS_UNDOCKED_WIDGETS_DURING_CLOSE_BUG
+extern MainWindow* mainWindow;
+#endif
 
 RegisteredDockWidget::RegisteredDockWidget(const QString& fullName, QWidget* parent) :
   QDockWidget(parent), fullName(fullName), module(0), object(0), widget(0), flags(0), reallyVisible(false)
@@ -15,6 +20,9 @@ RegisteredDockWidget::RegisteredDockWidget(const QString& fullName, QWidget* par
   setObjectName(fullName);
   setAllowedAreas(Qt::TopDockWidgetArea);
   setFocusPolicy(Qt::ClickFocus);
+#ifdef FIX_MACOS_DOCKED_WIDGETS_DRAG_BUG
+  setFeatures(features() & ~DockWidgetMovable);
+#endif
   connect(this, SIGNAL(visibilityChanged(bool)), this, SLOT(visibilityChanged(bool)));
 }
 
@@ -22,7 +30,7 @@ void RegisteredDockWidget::setWidget(SimRobot::Widget* widget, const SimRobot::M
 {
   if(widget)
   {
-#ifdef FIX_MACOSX_UNDOCKED_WIDGETS_DISAPPEAR_WHEN_DOCKED_BUG
+#ifdef FIX_MACOS_UNDOCKED_WIDGETS_DISAPPEAR_WHEN_DOCKED_BUG
     if(isFloating() && widget->getWidget()->inherits("QGLWidget"))
     {
       setFloating(false);
@@ -34,7 +42,7 @@ void RegisteredDockWidget::setWidget(SimRobot::Widget* widget, const SimRobot::M
       QDockWidget::setWidget(widget->getWidget());
   }
   else
-    QDockWidget::setWidget(0);
+    QDockWidget::setWidget(nullptr);
   if(this->widget)
     delete this->widget;
   this->module = module;
@@ -56,7 +64,7 @@ QMenu* RegisteredDockWidget::createFileMenu() const
 QMenu* RegisteredDockWidget::createEditMenu()
 {
   if(!widget)
-    return 0;
+    return nullptr;
 
   QMenu* menu = widget->createEditMenu();
 
@@ -80,7 +88,7 @@ QMenu* RegisteredDockWidget::createEditMenu()
 QMenu* RegisteredDockWidget::createUserMenu() const
 {
   if(!widget)
-    return 0;
+    return nullptr;
 
   QMenu* menu = widget->createUserMenu();
 
@@ -125,7 +133,17 @@ void RegisteredDockWidget::closeEvent(QCloseEvent* event)
     return;
   }
 
-  QDockWidget::closeEvent(event);
+#ifdef FIX_MACOS_UNDOCKED_WIDGETS_DURING_CLOSE_BUG
+  if(isFloating() && widget && widget->getWidget()->inherits("QGLWidget"))
+  {
+    mainWindow->setUpdatesEnabled(false);
+    setFloating(false);
+    QDockWidget::closeEvent(event);
+    mainWindow->setUpdatesEnabled(true);
+  }
+  else
+#endif
+    QDockWidget::closeEvent(event);
 
   emit closedObject(fullName);
 }
@@ -138,7 +156,7 @@ void RegisteredDockWidget::contextMenuEvent(QContextMenuEvent* event)
     return;
   }
 
-  QRect content(QDockWidget::widget()->geometry());
+  const QRect content(QDockWidget::widget()->geometry());
   if(!content.contains(event->x(), event->y()))
   { // click on window frame
     QDockWidget::contextMenuEvent(event);
@@ -149,12 +167,11 @@ void RegisteredDockWidget::contextMenuEvent(QContextMenuEvent* event)
   QMenu menu;
   QMenu* editMenu = createEditMenu();
   QMenu* userMenu = createUserMenu();
-  QMenu* simMenu = ((MainWindow*) MainWindow::application)->createSimMenu();
+  QMenu* simMenu = dynamic_cast<MainWindow*>(MainWindow::application)->createSimMenu();
   if(editMenu)
   {
     QMetaObject::invokeMethod(editMenu, "aboutToShow", Qt::DirectConnection);
-    const QList<QAction*> actions = editMenu->actions();
-    foreach(QAction* action, actions)
+    for(QAction* action : editMenu->actions())
     {
       editMenu->removeAction(action);
       menu.addAction(action);
@@ -166,15 +183,14 @@ void RegisteredDockWidget::contextMenuEvent(QContextMenuEvent* event)
   {
     QMetaObject::invokeMethod(userMenu, "aboutToShow", Qt::DirectConnection);
     menu.addSeparator();
-    const QList<QAction*> actions  = userMenu->actions();
-    foreach(QAction* action, actions)
+    for(QAction* action : userMenu->actions())
     {
       userMenu->removeAction(action);
       menu.addAction(action);
     }
   }
   event->accept();
-  QAction* action = menu.exec(mapToGlobal(QPoint(event->x(), event->y())));
+  const QAction* action = menu.exec(mapToGlobal(QPoint(event->x(), event->y())));
   delete simMenu;
   if(editMenu)
     delete editMenu;
@@ -193,7 +209,7 @@ void RegisteredDockWidget::visibilityChanged(bool visible)
 void RegisteredDockWidget::copy()
 {
   QApplication::clipboard()->clear();
-  QApplication::clipboard()->setPixmap(QPixmap::grabWidget(QDockWidget::widget()));
+  QApplication::clipboard()->setPixmap(QDockWidget::widget()->grab());
 }
 
 void RegisteredDockWidget::exportAsSvg()
@@ -235,6 +251,7 @@ void RegisteredDockWidget::exportAsPng()
   settings.setValue("ExportDirectory", QFileInfo(fileName).dir().path());
 
   QPixmap pixmap(widget->getWidget()->size());
+  pixmap.fill(QColor(0, 0, 0, 0));
   widget->getWidget()->render(&pixmap);
   pixmap.save(fileName, "PNG");
 }

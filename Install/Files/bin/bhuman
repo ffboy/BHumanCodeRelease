@@ -1,19 +1,16 @@
 #!/bin/sh
 
-NAME=$1
-FLAGS=$2
-CURRDIR=/home/nao
-DIR=$CURRDIR
+BINARY="/home/nao/Config/bhuman"
+LOGDIR="/home/nao/logging"
+DUMPFILE="/home/nao/bhdump.log"
+BACKGROUND=false
+DEBUG=false
 
 usage()
 {
-  echo "usage: $0 [<name>] [<flags>] - Starts the last deployed or named bhuman version."
-  exit 1
-}
-
-error()
-{
-  echo "$1"
+  echo "usage: $0 [ -b | -d ] - Starts the last deployed bhuman version."
+  echo "    -b  redirect output to logfile only"
+  echo "    -d  start bhuman in a debugger"
   exit 1
 }
 
@@ -22,30 +19,56 @@ if [ $(whoami) != nao ]; then
   exit 1
 fi
 
-[ x$NAME = xDefault ] && NAME=""
-[ ! -z $NAME ] && DIR="$CURRDIR/Saves/$NAME"
-
-[ ! -d "$DIR" ] && error "There is no bhuman version called $NAME."
-
-if [ ! -z $NAME ]; then
-  echo "Copying colortables..."
-  for name in $(find "$DIR/Config" -name '*.c64'); do
-    mv "$name" "$name.bak" || exit
-  done
-  for name in $(find $CURRDIR/Config/ -name '*.c64'); do
-    echo $(echo $name | sed -e s:$CURRDIR/::)
-    DEST="$(echo $name | sed -e s:$CURRDIR:$DIR:)"
-    cp "$name" "$DEST" || exit
-  done
-  echo "Copying team.cfg and settings.cfg"
-  cp "$CURRDIR/Config/team.cfg" "$DIR/Config/team.cfg"
-  cp "$CURRDIR/Config/settings.cfg" "$DIR/Config/settings.cfg"
-  echo ""
+if [ $# -eq 1 ]; then
+  case $1 in
+    -b)
+      BACKGROUND=true
+      ;;
+    -d)
+      DEBUG=true
+      ;;
+    *)
+      usage
+      ;;
+  esac
+elif [ $# -ne 0 ]; then
+  usage
 fi
 
-# this should fix a freaky cygwin bug
-if [ ! -x "$DIR/Config/bhuman" ]; then
-  chmod u+x "$DIR/Config/bhuman" || exit
+# Remove assertion dumps from previous runs.
+rm -f "${DUMPFILE}"
+
+# This should fix a freaky cygwin bug.
+if [ ! -x "${BINARY}" ]; then
+  chmod u+x "${BINARY}" || exit 1
+fi
+# Ignore SIGINT and SIGTERM. This inherits to child processes,
+
+# but bhuman installs its own handlers, so this script will come to an end, too.
+trap "" 2 15
+
+# Log to USB drive if available.
+mount /media/usb 2>/dev/null && mkdir -p /media/usb/logs
+if [ -d /media/usb/logs ]; then
+  ln -sf /media/usb/logs "${LOGDIR}"
+else
+  ln -sf /home/nao/logs "${LOGDIR}"
 fi
 
-stdbuf -o0 "$DIR/Config/bhuman" -c "$DIR" -w $FLAGS 2>&1 | stdbuf -o0 awk -F '\n' '{ print strftime("%H:%M:%S" , systime()) " " $0}' | tee --append /tmp/bhumand.log
+# Make log-names unique by numbering them.
+COUNTER=$(ls "${LOGDIR}" | sed -nE "s/^bhumand_\(([0-9]+)\).log$/\1/p" | sort -n | tail -n1)
+COUNTER=$(expr ${COUNTER} + 1)
+LOGFILE="${LOGDIR}/bhumand_(${COUNTER}).log"
+# Actually execute bhuman.
+
+if ${DEBUG}; then
+  gdb "${BINARY}"
+elif ${BACKGROUND}; then
+  "${BINARY}" -w 2>&1 | stdbuf -o0 awk -F '\n' '{print strftime("%H:%M:%S", systime()) " " $0}' >"${LOGFILE}"
+else
+  "${BINARY}" -w 2>&1 | stdbuf -o0 awk -F '\n' '{print strftime("%H:%M:%S", systime()) " " $0}' | tee "${LOGFILE}"
+fi
+
+# Remove leftovers.
+rm -f "${LOGDIR}"
+umount /media/usb 2>/dev/null

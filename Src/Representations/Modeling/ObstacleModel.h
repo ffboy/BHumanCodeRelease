@@ -7,8 +7,8 @@
  */
 #pragma once
 
-#include "Tools/Streams/AutoStreamable.h"
-#include "Tools/Enum.h"
+#include "Representations/Communication/BHumanTeamMessageParts/BHumanMessageParticle.h"
+#include "Tools/Streams/Enum.h"
 #include "Tools/Math/Eigen.h"
 #include "Tools/Modeling/Obstacle.h"
 
@@ -19,33 +19,17 @@
  * foot bumper contact.
  */
 
-STREAMABLE(ObstacleModel,
+STREAMABLE(ObstacleModel, COMMA public BHumanMessageParticle<idObstacleModel>
 {
+  /** BHumanMessageParticle functions */
+  void operator>>(BHumanMessage& m) const override;
+  void operator<<(const BHumanMessage& m) override;
+
   ObstacleModel() = default;
-  void draw() const,
+  void draw() const;
+  void verify() const,
 
-  (std::vector<Obstacle>) obstacles, /**< List of obstacles (all entries are somewhat valid obstacles)*/
+  (std::vector<Obstacle>) obstacles, /**< List of obstacles (position relative to own pose) */
 });
 
-STREAMABLE(ObstacleModelCompressed,
-{
-  // Definition of an compressed obstacle
-  STREAMABLE(ObstacleCompressed,
-  {
-    ObstacleCompressed() = default;
-    ObstacleCompressed(const Obstacle& other),
-
-    (float) covXX,
-    (float) covYY,
-    (float) covXY,                        /**< Covariance matrix of an obstacle */
-    (Vector2f) center,                    /**< Center point of an Obstacle */
-    (Vector2f) left,                      /**< Left point of an Obstacle */
-    (Vector2f) right,                     /**< Right point of an Obstacle */
-    ((Obstacle) Type) type, /**< See enumeration 'Type' above */
-  });
-  ObstacleModelCompressed() = default;
-  ObstacleModelCompressed(const ObstacleModel& other, size_t maxNumberOfObstacles);
-  void draw() const,
-
-  (std::vector<ObstacleCompressed>) obstacles, /**< List of obstacles (all entries are somewhat valid obstacles)*/
-});
+STREAMABLE_WITH_BASE(ObstacleModel2, ObstacleModel, {,});

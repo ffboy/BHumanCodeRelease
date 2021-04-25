@@ -1,10 +1,10 @@
 /**
-* @file Controller/Views/KickView/KickView.h
-*
-* Declaration of class KickView
-*
-* @author <a href="mailto:judy@tzi.de">Judith Müller</a>
-*/
+ * @file Controller/Views/KickView/KickView.h
+ *
+ * Declaration of class KickView
+ *
+ * @author <a href="mailto:judy@tzi.de">Judith Müller</a>
+ */
 
 #pragma once
 
@@ -15,9 +15,9 @@
 #include <QString>
 #include <QIcon>
 
-struct MotionRequest;
-struct JointCalibration;
 struct JointAngles;
+struct JointLimits;
+struct MotionRequest;
 struct RobotDimensions;
 class RobotConsole;
 class KickViewWidget;
@@ -25,26 +25,23 @@ class KickViewWidget;
 class KickView : public SimRobot::Object
 {
 public:
-  /**
-  * Constructor.
-  */
-  KickView(const QString& fullName, RobotConsole& console, const MotionRequest& motionRequest, const JointAngles& jointAngles, 
-           const JointCalibration& jointCalibration, const RobotDimensions& robotDimensions, const std::string& mr, SimRobotCore2::Body* robot);
-
   QString fullName;
   QIcon icon;
   RobotConsole& console;
   const MotionRequest& motionRequest;
   const JointAngles& jointAngles;
-  const JointCalibration& jointCalibration;
+  const JointLimits& jointLimits;
   const RobotDimensions& robotDimensions;
   const std::string& motionRequestCommand;
   SimRobotCore2::Body* robot;
 
+  KickView(const QString& fullName, RobotConsole& console, const MotionRequest& motionRequest, const JointAngles& jointAngles,
+           const JointLimits& jointLimits, const RobotDimensions& robotDimensions, const std::string& mr, SimRobotCore2::Body* robot);
+
 private:
-  virtual SimRobot::Widget* createWidget();
-  virtual const QString& getFullName() const {return fullName;}
-  virtual const QIcon* getIcon() const {return &icon;}
+  SimRobot::Widget* createWidget() override;
+  const QString& getFullName() const override { return fullName; }
+  const QIcon* getIcon() const override { return &icon; }
 };
 
 class KickViewHeaderedWidget : public HeaderedWidget, public SimRobot::Widget
@@ -52,22 +49,21 @@ class KickViewHeaderedWidget : public HeaderedWidget, public SimRobot::Widget
   Q_OBJECT
 
 public:
-  KickViewHeaderedWidget(KickView& kickView);
   KickViewWidget* kickViewWidget;
 
-  virtual QWidget* getWidget() {return this;}
-  virtual void update();
-  virtual QMenu* createFileMenu() const;
-  virtual QMenu* createEditMenu() const;
-  virtual bool canClose();
+  KickViewHeaderedWidget(KickView& kickView);
+
+  QWidget* getWidget() override { return this; }
+  void update() override;
+  QMenu* createFileMenu() const override;
+  QMenu* createEditMenu() const override;
+  bool canClose() override;
   void addStateToUndoList();
 
 private:
   KickEngineParameters parameters;
   QString fileName;
   std::vector<KickEngineParameters> undo, redo;
-
-  void writeParametersToFile(const std::string& name);
 
 signals:
   void undoAvailable(bool available);

@@ -1,7 +1,7 @@
 /****************************************************************************
 **
-** Copyright (C) 2015 The Qt Company Ltd.
-** Contact: http://www.qt.io/licensing/
+** Copyright (C) 2016 The Qt Company Ltd.
+** Contact: https://www.qt.io/licensing/
 **
 ** This file is part of the QtCore module of the Qt Toolkit.
 **
@@ -11,29 +11,27 @@
 ** accordance with the commercial license agreement provided with the
 ** Software or, alternatively, in accordance with the terms contained in
 ** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see http://www.qt.io/terms-conditions. For further
-** information use the contact form at http://www.qt.io/contact-us.
+** and conditions see https://www.qt.io/terms-conditions. For further
+** information use the contact form at https://www.qt.io/contact-us.
 **
 ** GNU Lesser General Public License Usage
 ** Alternatively, this file may be used under the terms of the GNU Lesser
-** General Public License version 2.1 or version 3 as published by the Free
-** Software Foundation and appearing in the file LICENSE.LGPLv21 and
-** LICENSE.LGPLv3 included in the packaging of this file. Please review the
-** following information to ensure the GNU Lesser General Public License
-** requirements will be met: https://www.gnu.org/licenses/lgpl.html and
-** http://www.gnu.org/licenses/old-licenses/lgpl-2.1.html.
-**
-** As a special exception, The Qt Company gives you certain additional
-** rights. These rights are described in The Qt Company LGPL Exception
-** version 1.1, included in the file LGPL_EXCEPTION.txt in this package.
+** General Public License version 3 as published by the Free Software
+** Foundation and appearing in the file LICENSE.LGPL3 included in the
+** packaging of this file. Please review the following information to
+** ensure the GNU Lesser General Public License version 3 requirements
+** will be met: https://www.gnu.org/licenses/lgpl-3.0.html.
 **
 ** GNU General Public License Usage
 ** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 3.0 as published by the Free Software
-** Foundation and appearing in the file LICENSE.GPL included in the
-** packaging of this file.  Please review the following information to
-** ensure the GNU General Public License version 3.0 requirements will be
-** met: http://www.gnu.org/copyleft/gpl.html.
+** General Public License version 2.0 or (at your option) the GNU General
+** Public license version 3 or any later version approved by the KDE Free
+** Qt Foundation. The licenses are as published by the Free Software
+** Foundation and appearing in the file LICENSE.GPL2 and LICENSE.GPL3
+** included in the packaging of this file. Please review the following
+** information to ensure the GNU General Public License requirements will
+** be met: https://www.gnu.org/licenses/gpl-2.0.html and
+** https://www.gnu.org/licenses/gpl-3.0.html.
 **
 ** $QT_END_LICENSE$
 **
@@ -45,11 +43,8 @@
 #include <QtCore/qstring.h>
 #include <QtCore/qlist.h>
 
-QT_BEGIN_HEADER
-
 QT_BEGIN_NAMESPACE
 
-QT_MODULE(Core)
 
 #ifndef QT_NO_TEXTCODEC
 
@@ -73,11 +68,9 @@ public:
     static QTextCodec* codecForLocale();
     static void setCodecForLocale(QTextCodec *c);
 
-    static QTextCodec* codecForTr();
-    static void setCodecForTr(QTextCodec *c);
-
-    static QTextCodec* codecForCStrings();
-    static void setCodecForCStrings(QTextCodec *c);
+#if QT_DEPRECATED_SINCE(5, 0)
+    QT_DEPRECATED static QTextCodec *codecForTr() { return codecForMib(106); /* Utf8 */ }
+#endif
 
     static QTextCodec *codecForHtml(const QByteArray &ba);
     static QTextCodec *codecForHtml(const QByteArray &ba, QTextCodec *defaultCodec);
@@ -101,7 +94,7 @@ public:
 
     struct Q_CORE_EXPORT ConverterState {
         ConverterState(ConversionFlags f = DefaultConversion)
-            : flags(f), remainingChars(0), invalidChars(0), d(0) { state_data[0] = state_data[1] = state_data[2] = 0; }
+            : flags(f), remainingChars(0), invalidChars(0), d(Q_NULLPTR) { state_data[0] = state_data[1] = state_data[2] = 0; }
         ~ConverterState();
         ConversionFlags flags;
         int remainingChars;
@@ -112,16 +105,13 @@ public:
         Q_DISABLE_COPY(ConverterState)
     };
 
-    QString toUnicode(const char *in, int length, ConverterState *state = 0) const
+    QString toUnicode(const char *in, int length, ConverterState *state = Q_NULLPTR) const
         { return convertToUnicode(in, length, state); }
-    QByteArray fromUnicode(const QChar *in, int length, ConverterState *state = 0) const
+    QByteArray fromUnicode(const QChar *in, int length, ConverterState *state = Q_NULLPTR) const
         { return convertFromUnicode(in, length, state); }
 
-    // ### Qt 5: merge these functions.
-    QTextDecoder* makeDecoder() const;
-    QTextDecoder* makeDecoder(ConversionFlags flags) const;
-    QTextEncoder* makeEncoder() const;
-    QTextEncoder* makeEncoder(ConversionFlags flags) const;
+    QTextDecoder* makeDecoder(ConversionFlags flags = DefaultConversion) const;
+    QTextEncoder* makeEncoder(ConversionFlags flags = DefaultConversion) const;
 
     virtual QByteArray name() const = 0;
     virtual QList<QByteArray> aliases() const;
@@ -134,28 +124,10 @@ protected:
     QTextCodec();
     virtual ~QTextCodec();
 
-public:
-#ifdef QT3_SUPPORT
-    static QT3_SUPPORT QTextCodec* codecForContent(const char*, int) { return 0; }
-    static QT3_SUPPORT const char* locale();
-    static QT3_SUPPORT QTextCodec* codecForName(const char* hint, int) { return codecForName(QByteArray(hint)); }
-    QT3_SUPPORT QByteArray fromUnicode(const QString& uc, int& lenInOut) const;
-    QT3_SUPPORT QString toUnicode(const QByteArray&, int len) const;
-    QT3_SUPPORT QByteArray mimeName() const { return name(); }
-    static QT3_SUPPORT QTextCodec *codecForIndex(int i) { return codecForName(availableCodecs().value(i)); }
-#endif
-
 private:
-    friend class QTextCodecCleanup;
-    static QTextCodec *cftr;
-    static bool validCodecs();
+    friend struct QCoreGlobalData;
 };
 Q_DECLARE_OPERATORS_FOR_FLAGS(QTextCodec::ConversionFlags)
-
-        inline QTextCodec* QTextCodec::codecForTr() { return validCodecs() ? cftr : 0; }
-inline void QTextCodec::setCodecForTr(QTextCodec *c) { cftr = c; }
-inline QTextCodec* QTextCodec::codecForCStrings() { return validCodecs() ? QString::codecForCStrings : 0; }
-inline void QTextCodec::setCodecForCStrings(QTextCodec *c) { QString::codecForCStrings = c; }
 
 class Q_CORE_EXPORT QTextEncoder {
     Q_DISABLE_COPY(QTextEncoder)
@@ -165,9 +137,6 @@ public:
     ~QTextEncoder();
     QByteArray fromUnicode(const QString& str);
     QByteArray fromUnicode(const QChar *uc, int len);
-#ifdef QT3_SUPPORT
-    QT3_SUPPORT QByteArray fromUnicode(const QString& uc, int& lenInOut);
-#endif
     bool hasFailure() const;
 private:
     const QTextCodec *c;
@@ -192,7 +161,5 @@ private:
 #endif // QT_NO_TEXTCODEC
 
 QT_END_NAMESPACE
-
-QT_END_HEADER
 
 #endif // QTEXTCODEC_H

@@ -1,21 +1,24 @@
 /**
-* @file TeamPlayersLocator.h
-*
-*
-* @author Florian Maaß
-*/
+ * @file TeamPlayersLocator.h
+ *
+ *
+ * @author Florian
+ */
 
 #pragma once
 
-#include "Tools/Modeling/Obstacle.h"
-#include "Tools/Module/Module.h"
-#include "Representations/Modeling/TeamPlayersModel.h"
-#include "Representations/Modeling/ObstacleModel.h"
-#include "Representations/Infrastructure/RobotInfo.h"
+#include "Representations/Communication/GameInfo.h"
+#include "Representations/Communication/RobotInfo.h"
+#include "Representations/Communication/TeamData.h"
 #include "Representations/Configuration/FieldDimensions.h"
-#include "Representations/Infrastructure/TeammateData.h"
+#include "Representations/Infrastructure/FrameInfo.h"
+#include "Representations/Modeling/ObstacleModel.h"
+#include "Representations/Modeling/TeamPlayersModel.h"
 #include "Representations/Sensing/FallDownState.h"
 #include "Representations/Sensing/GroundContactState.h"
+#include "Tools/Modeling/Obstacle.h"
+#include "Tools/Module/Module.h"
+#include <map>
 #include <vector>
 
 MODULE(TeamPlayersLocator,
@@ -23,16 +26,21 @@ MODULE(TeamPlayersLocator,
   REQUIRES(RobotPose),
   REQUIRES(RobotInfo),
   REQUIRES(BallModel),
-  REQUIRES(TeammateData),
+  REQUIRES(TeamData),
   REQUIRES(FieldDimensions),
   REQUIRES(FallDownState),
+  REQUIRES(GameInfo),
   REQUIRES(GroundContactState),
   REQUIRES(ObstacleModel),
+  REQUIRES(FrameInfo),
   PROVIDES(TeamPlayersModel),
   LOADS_PARAMETERS(
   {,
-    (float) squaredMahalanobisDistanceParameter,
+    (float) squaredDistanceGoalPostThreshold,
+    (float) squaredDistanceThreshold,
     (float) selfDetectionOnlyRadius,
+    (float) teammatePoseDeviation,
+    (int) obstacleAgeThreshold,
   }),
 });
 
@@ -42,15 +50,24 @@ MODULE(TeamPlayersLocator,
  */
 class TeamPlayersLocator : public TeamPlayersLocatorBase
 {
-  /**
-  * Provides the combined world model representation
-  */
-  const float squaredDistanceThreshold = sqr(Obstacle::getRobotDepth());
-  void update(TeamPlayersModel& teamPlayersModel);
+public:
+  TeamPlayersLocator();
 
-  Matrix2f rotateCovariance(const Matrix2f& matrix, const float angle);
-  void merge(Obstacle& obstacle, std::vector<Obstacle>& obstacles) const;
-  void removeAround(Obstacle& teammate, std::vector<Obstacle>& obstacles) const;
-  Obstacle::Type setType(const Obstacle::Type one, const Obstacle::Type other) const;
-  bool isInsideOwnDetectionArea(const Vector2f& position) const;
+private:
+  /**
+   * Provides the world representation of obstacles
+   */
+  void update(TeamPlayersModel& teamPlayersModel) override;
+
+  bool isInsideOwnDetectionArea(const Vector2f& position, int robotNumber, float& distance, int lastSeen) const;
+  bool isInsideOwnDetectionArea(const Vector2f& position, int robotNumber, int lastSeen) const;
+  bool collideOtherDetectionArea(const Vector2f& position, int robotNumber, std::map<int, RobotPose>& ownTeam,
+                                 const float distance) const;
+  bool isGoalPost(const Vector2f& position) const;
+  bool isTeammate(const Vector2f& position, const float radius, int ignoreRobotNumber) const;
+  bool isTeammate(const Vector2f& position, const float radius) const;
+  void setType(Obstacle& one, const Obstacle& other) const;
+
+  std::map<int, RobotPose> ownTeam;
+  std::vector<Obstacle, Eigen::aligned_allocator<Obstacle>> goalPosts;
 };

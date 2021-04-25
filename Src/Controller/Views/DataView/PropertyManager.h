@@ -1,4 +1,4 @@
-/*
+/**
  * PropertyManager.h
  *
  *  Created on: Apr 27, 2012
@@ -17,6 +17,7 @@
 #include "TypeDescriptor.h"
 
 using namespace Type;
+
 /**
  * Extends the VariantPropertyManager to add support for additional datatypes.
  *
@@ -44,58 +45,54 @@ class PropertyManager : public QtVariantPropertyManager
 
 public:
   PropertyManager();
-  virtual ~PropertyManager();
+  ~PropertyManager();
 
   /**
    * @return The value of the specified property or an invalid QVariant of the
    *         property is not managed by this manager.
    */
-  virtual QVariant value(const QtProperty* pProperty) const;
+  QVariant value(const QtProperty* pProperty) const override;
 
   /**
    * @return the type-id of the specified property.
    */
-  virtual int valueType(int propertyType) const;
+  int valueType(int propertyType) const override;
 
   /**
    * @return the value of the specified property as string or a default String of the property
    *         is not managed by this manager.
    */
-  QString valueText(const QtProperty* property) const;
+  QString valueText(const QtProperty* property) const override;
 
   /**
    * @return true if this VariantManager supports the type. False otherwise.
    */
-  bool isPropertyTypeSupported(int type) const;
+  bool isPropertyTypeSupported(int type) const override;
 
 public slots:
   /**
    * Changes the value of the specified property.
    * Emits valueChanged and propertyChanged signals
    */
-  virtual void setValue(QtProperty* property, const QVariant& val);
+  void setValue(QtProperty* property, const QVariant& val) override;
 
 protected:
   /**
    * This method is called by the base class whenever a new property should
    * be created.
    */
-  virtual void initializeProperty(QtProperty* property);
+  void initializeProperty(QtProperty* property) override;
 
   /**
    * This method is called by the base class whenever a property should be
    * destroyed.
    */
-  virtual void uninitializeProperty(QtProperty* property);
+  void uninitializeProperty(QtProperty* property) override;
 
 private slots:
   void slotValueChanged(QtProperty* property, const QVariant& value);
 
 private:
-  /**
-   * Initialize information about the allowed types
-   */
-  void initTypes();
 
   /**
    * QtVariantProperties don't know anything about the type of the data they contain.
@@ -110,4 +107,9 @@ private:
    * value: descriptor of that type
    */
   QMap<int, TypeDescriptor*> theDescriptors;
+
+  /**
+   * Initialize information about the allowed types
+   */
+  void initTypes();
 };

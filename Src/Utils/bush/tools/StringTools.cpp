@@ -1,7 +1,7 @@
 #include "Utils/bush/tools/StringTools.h"
 #include <sstream>
 
-std::vector<std::string> split(const std::string line, char separator)
+std::vector<std::string> split(const std::string& line, char separator)
 {
   std::vector<std::string> elements;
   size_t last = 0;
@@ -20,7 +20,7 @@ std::vector<std::string> split(const std::string line, char separator)
   return elements;
 }
 
-std::string join(const std::vector<std::string> line, const std::string &separator)
+std::string join(const std::vector<std::string> line, const std::string& separator)
 {
   std::stringstream buf;
   for(size_t i = 0; i < line.size(); ++i)
@@ -32,7 +32,7 @@ std::string join(const std::vector<std::string> line, const std::string &separat
   return buf.str();
 }
 
-bool startsWidth(const std::string &str, const std::string &prefix)
+bool startsWidth(const std::string& str, const std::string& prefix)
 {
   if(str.length() < prefix.length())
     return false;

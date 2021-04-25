@@ -20,7 +20,7 @@ std::string ShutdownCmd::getName() const
 
 std::string ShutdownCmd::getDescription() const
 {
-  return "bhumand stop && naoqid stop && halt";
+  return "Shuts down the robot.";
 }
 
 bool ShutdownCmd::preExecution(Context& context, const std::vector<std::string>& params)
@@ -49,7 +49,6 @@ bool ShutdownCmd::ShutdownTask::execute()
   context().printLine(robot->name + ": Shutting down...");
   std::string command = remoteCommand("halt", ip);
   ProcessRunner r(context(), fromString(command));
-  r = ProcessRunner(context(), fromString(command));
   r.run();
   if(r.error())
   {

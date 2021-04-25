@@ -1,7 +1,7 @@
 /****************************************************************************
 **
-** Copyright (C) 2015 The Qt Company Ltd.
-** Contact: http://www.qt.io/licensing/
+** Copyright (C) 2016 The Qt Company Ltd.
+** Contact: https://www.qt.io/licensing/
 **
 ** This file is part of the QtGui module of the Qt Toolkit.
 **
@@ -11,29 +11,27 @@
 ** accordance with the commercial license agreement provided with the
 ** Software or, alternatively, in accordance with the terms contained in
 ** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see http://www.qt.io/terms-conditions. For further
-** information use the contact form at http://www.qt.io/contact-us.
+** and conditions see https://www.qt.io/terms-conditions. For further
+** information use the contact form at https://www.qt.io/contact-us.
 **
 ** GNU Lesser General Public License Usage
 ** Alternatively, this file may be used under the terms of the GNU Lesser
-** General Public License version 2.1 or version 3 as published by the Free
-** Software Foundation and appearing in the file LICENSE.LGPLv21 and
-** LICENSE.LGPLv3 included in the packaging of this file. Please review the
-** following information to ensure the GNU Lesser General Public License
-** requirements will be met: https://www.gnu.org/licenses/lgpl.html and
-** http://www.gnu.org/licenses/old-licenses/lgpl-2.1.html.
-**
-** As a special exception, The Qt Company gives you certain additional
-** rights. These rights are described in The Qt Company LGPL Exception
-** version 1.1, included in the file LGPL_EXCEPTION.txt in this package.
+** General Public License version 3 as published by the Free Software
+** Foundation and appearing in the file LICENSE.LGPL3 included in the
+** packaging of this file. Please review the following information to
+** ensure the GNU Lesser General Public License version 3 requirements
+** will be met: https://www.gnu.org/licenses/lgpl-3.0.html.
 **
 ** GNU General Public License Usage
 ** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 3.0 as published by the Free Software
-** Foundation and appearing in the file LICENSE.GPL included in the
-** packaging of this file.  Please review the following information to
-** ensure the GNU General Public License version 3.0 requirements will be
-** met: http://www.gnu.org/copyleft/gpl.html.
+** General Public License version 2.0 or (at your option) the GNU General
+** Public license version 3 or any later version approved by the KDE Free
+** Qt Foundation. The licenses are as published by the Free Software
+** Foundation and appearing in the file LICENSE.GPL2 and LICENSE.GPL3
+** included in the packaging of this file. Please review the following
+** information to ensure the GNU General Public License requirements will
+** be met: https://www.gnu.org/licenses/gpl-2.0.html and
+** https://www.gnu.org/licenses/gpl-3.0.html.
 **
 ** $QT_END_LICENSE$
 **
@@ -42,6 +40,7 @@
 #ifndef QPAINTER_H
 #define QPAINTER_H
 
+#include <QtGui/qtguiglobal.h>
 #include <QtCore/qnamespace.h>
 #include <QtCore/qrect.h>
 #include <QtCore/qpoint.h>
@@ -49,7 +48,6 @@
 #include <QtGui/qpixmap.h>
 #include <QtGui/qimage.h>
 #include <QtGui/qtextoption.h>
-#include <QtGui/qdrawutil.h>
 
 #ifndef QT_INCLUDE_COMPAT
 #include <QtGui/qpolygon.h>
@@ -61,11 +59,8 @@
 #include <QtGui/qfontmetrics.h>
 #endif
 
-QT_BEGIN_HEADER
-
 QT_BEGIN_NAMESPACE
 
-QT_MODULE(Gui)
 
 class QBrush;
 class QFontInfo;
@@ -76,6 +71,7 @@ class QPainterPrivate;
 class QPen;
 class QPolygon;
 class QTextItem;
+class QTextEngine;
 class QMatrix;
 class QTransform;
 class QStaticText;
@@ -87,7 +83,6 @@ class Q_GUI_EXPORT QPainter
 {
     Q_DECLARE_PRIVATE(QPainter)
     Q_GADGET
-    Q_FLAGS(RenderHint RenderHints)
 
 public:
     enum RenderHint {
@@ -95,10 +90,13 @@ public:
         TextAntialiasing = 0x02,
         SmoothPixmapTransform = 0x04,
         HighQualityAntialiasing = 0x08,
-        NonCosmeticDefaultPen = 0x10
+        NonCosmeticDefaultPen = 0x10,
+        Qt4CompatiblePainting = 0x20
     };
+    Q_FLAG(RenderHint)
 
     Q_DECLARE_FLAGS(RenderHints, RenderHint)
+    Q_FLAG(RenderHints)
 
     class PixmapFragment {
     public:
@@ -133,7 +131,7 @@ public:
     bool end();
     bool isActive() const;
 
-    void initFrom(const QWidget *widget);
+    void initFrom(const QPaintDevice *device);
 
     enum CompositionMode {
         CompositionMode_SourceOver,
@@ -172,7 +170,12 @@ public:
         RasterOp_NotSourceXorDestination,
         RasterOp_NotSource,
         RasterOp_NotSourceAndDestination,
-        RasterOp_SourceAndNotDestination
+        RasterOp_SourceAndNotDestination,
+        RasterOp_NotSourceOrDestination,
+        RasterOp_SourceOrNotDestination,
+        RasterOp_ClearDestination,
+        RasterOp_SetDestination,
+        RasterOp_NotDestination
     };
     void setCompositionMode(CompositionMode mode);
     CompositionMode compositionMode() const;
@@ -379,9 +382,7 @@ public:
     inline void drawPixmap(int x, int y, int w, int h, const QPixmap &pm);
 
     void drawPixmapFragments(const PixmapFragment *fragments, int fragmentCount,
-                             const QPixmap &pixmap, PixmapFragmentHints hints = 0);
-    void drawPixmapFragments(const QRectF *targetRects, const QRectF *sourceRects, int fragmentCount,
-                             const QPixmap &pixmap, PixmapFragmentHints hints = 0);
+                             const QPixmap &pixmap, PixmapFragmentHints hints = PixmapFragmentHints());
 
     void drawImage(const QRectF &targetRect, const QImage &image, const QRectF &sourceRect,
                    Qt::ImageConversionFlags flags = Qt::AutoColor);
@@ -415,9 +416,9 @@ public:
 
     void drawText(const QPointF &p, const QString &str, int tf, int justificationPadding);
 
-    void drawText(const QRectF &r, int flags, const QString &text, QRectF *br=0);
-    void drawText(const QRect &r, int flags, const QString &text, QRect *br=0);
-    inline void drawText(int x, int y, int w, int h, int flags, const QString &text, QRect *br=0);
+    void drawText(const QRectF &r, int flags, const QString &text, QRectF *br = Q_NULLPTR);
+    void drawText(const QRect &r, int flags, const QString &text, QRect *br = Q_NULLPTR);
+    inline void drawText(int x, int y, int w, int h, int flags, const QString &text, QRect *br = Q_NULLPTR);
 
     void drawText(const QRectF &r, const QString &text, const QTextOption &o = QTextOption());
 
@@ -460,110 +461,34 @@ public:
 
     static void setRedirected(const QPaintDevice *device, QPaintDevice *replacement,
                               const QPoint& offset = QPoint());
-    static QPaintDevice *redirected(const QPaintDevice *device, QPoint *offset = 0);
+    static QPaintDevice *redirected(const QPaintDevice *device, QPoint *offset = Q_NULLPTR);
     static void restoreRedirected(const QPaintDevice *device);
 
     void beginNativePainting();
     void endNativePainting();
 
-#ifdef QT3_SUPPORT
-
-    inline QT3_SUPPORT void setBackgroundColor(const QColor &color) { setBackground(color); }
-    inline QT3_SUPPORT const QColor &backgroundColor() const { return background().color(); }
-
-    inline QT3_SUPPORT void drawText(int x, int y, const QString &s, int pos, int len)
-        { drawText(x, y, s.mid(pos, len)); }
-    inline QT3_SUPPORT void drawText(const QPoint &p, const QString &s, int pos, int len)
-        { drawText(p, s.mid(pos, len)); }
-    inline QT3_SUPPORT void drawText(int x, int y, const QString &s, int len)
-        { drawText(x, y, s.left(len)); }
-    inline QT3_SUPPORT void drawText(const QPoint &p, const QString &s, int len)
-        { drawText(p, s.left(len)); }
-    inline QT3_SUPPORT void drawText(const QRect &r, int flags, const QString &str, int len, QRect *br=0)
-        { drawText(r, flags, str.left(len), br); }
-    inline QT3_SUPPORT void drawText(int x, int y, int w, int h, int flags, const QString &text, int len, QRect *br=0)
-        { drawText(QRect(x, y, w, h), flags, text.left(len), br); }
-    inline QT3_SUPPORT QRect boundingRect(const QRect &rect, int flags, const QString &text, int len)
-        { return boundingRect(rect, flags, text.left(len)); }
-    inline QT3_SUPPORT QRect boundingRect(int x, int y, int w, int h, int flags, const QString &text, int len)
-        { return boundingRect(QRect(x, y, w, h), flags, text.left(len)); }
-
-    inline QT3_SUPPORT bool begin(QPaintDevice *pdev, const QWidget *init)
-        { bool ret = begin(pdev); initFrom(init); return ret; }
-    QT3_SUPPORT void drawPoints(const QPolygon &pa, int index, int npoints = -1)
-    { drawPoints(pa.constData() + index, npoints == -1 ? pa.size() - index : npoints); }
-
-    QT3_SUPPORT void drawCubicBezier(const QPolygon &pa, int index = 0);
-
-    QT3_SUPPORT void drawLineSegments(const QPolygon &points, int index = 0, int nlines = -1);
-
-    inline QT3_SUPPORT void drawPolyline(const QPolygon &pa, int index, int npoints = -1)
-    { drawPolyline(pa.constData() + index, npoints == -1 ? pa.size() - index : npoints); }
-
-    inline QT3_SUPPORT void drawPolygon(const QPolygon &pa, bool winding, int index = 0, int npoints = -1)
-    { drawPolygon(pa.constData() + index, npoints == -1 ? pa.size() - index : npoints,
-                  winding ? Qt::WindingFill : Qt::OddEvenFill); }
-
-    inline QT3_SUPPORT void drawPolygon(const QPolygonF &polygon, bool winding, int index = 0,
-                                      int npoints = -1)
-    { drawPolygon(polygon.constData() + index, npoints == -1 ? polygon.size() - index : npoints,
-                  winding ? Qt::WindingFill : Qt::OddEvenFill); }
-
-    inline QT3_SUPPORT void drawConvexPolygon(const QPolygonF &polygon, int index, int npoints = -1)
-    { drawConvexPolygon(polygon.constData() + index, npoints == -1 ? polygon.size() - index : npoints); }
-    inline QT3_SUPPORT void drawConvexPolygon(const QPolygon &pa, int index, int npoints = -1)
-    { drawConvexPolygon(pa.constData() + index, npoints == -1 ? pa.size() - index : npoints); }
-
-    static inline QT3_SUPPORT void redirect(QPaintDevice *pdev, QPaintDevice *replacement)
-    { setRedirected(pdev, replacement); }
-    static inline QT3_SUPPORT QPaintDevice *redirect(QPaintDevice *pdev)
-    { return const_cast<QPaintDevice*>(redirected(pdev)); }
-
-    inline QT3_SUPPORT void setWorldXForm(bool enabled) { setMatrixEnabled(enabled); }
-    inline QT3_SUPPORT bool hasWorldXForm() const { return matrixEnabled(); }
-    inline QT3_SUPPORT void resetXForm() { resetTransform(); }
-
-    inline QT3_SUPPORT void setViewXForm(bool enabled) { setViewTransformEnabled(enabled); }
-    inline QT3_SUPPORT bool hasViewXForm() const { return viewTransformEnabled(); }
-
-    QT3_SUPPORT void map(int x, int y, int *rx, int *ry) const;
-    QT3_SUPPORT QPoint xForm(const QPoint &) const; // map virtual -> deviceb
-    QT3_SUPPORT QRect xForm(const QRect &) const;
-    QT3_SUPPORT QPolygon xForm(const QPolygon &) const;
-    QT3_SUPPORT QPolygon xForm(const QPolygon &, int index, int npoints) const;
-    QT3_SUPPORT QPoint xFormDev(const QPoint &) const; // map device -> virtual
-    QT3_SUPPORT QRect xFormDev(const QRect &) const;
-    QT3_SUPPORT QPolygon xFormDev(const QPolygon &) const;
-    QT3_SUPPORT QPolygon xFormDev(const QPolygon &, int index, int npoints) const;
-    QT3_SUPPORT qreal translationX() const;
-    QT3_SUPPORT qreal translationY() const;
-#endif
-
 private:
     Q_DISABLE_COPY(QPainter)
-    friend class Q3Painter;
 
     QScopedPointer<QPainterPrivate> d_ptr;
 
+    friend class QWidget;
     friend class QFontEngine;
     friend class QFontEngineBox;
     friend class QFontEngineFT;
     friend class QFontEngineMac;
     friend class QFontEngineWin;
-    friend class QFontEngineXLFD;
-    friend class QWSManager;
     friend class QPaintEngine;
     friend class QPaintEngineExPrivate;
     friend class QOpenGLPaintEngine;
-    friend class QVGPaintEngine;
-    friend class QX11PaintEngine;
-    friend class QX11PaintEnginePrivate;
     friend class QWin32PaintEngine;
     friend class QWin32PaintEnginePrivate;
     friend class QRasterPaintEngine;
     friend class QAlphaPaintEngine;
     friend class QPreviewPaintEngine;
+    friend class QTextEngine;
 };
+Q_DECLARE_TYPEINFO(QPainter::PixmapFragment, Q_RELOCATABLE_TYPE);
 
 Q_DECLARE_OPERATORS_FOR_FLAGS(QPainter::RenderHints)
 
@@ -1005,7 +930,5 @@ inline void QPainter::drawPicture(const QPoint &pt, const QPicture &p)
 #endif
 
 QT_END_NAMESPACE
-
-QT_END_HEADER
 
 #endif // QPAINTER_H

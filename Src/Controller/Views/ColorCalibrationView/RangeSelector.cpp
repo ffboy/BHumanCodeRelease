@@ -1,4 +1,4 @@
-/*
+/**
  * File:   RangeSelector.cpp
  * Author: marcel
  *
@@ -12,14 +12,15 @@
 #include <QHBoxLayout>
 #include <cmath>
 
-RangeSelector::RangeSelector(const QString& name, ColorCalibrationWidget* parent,
-                             int min, int max)
-: QGroupBox(name, parent), parent(parent)
+RangeSelector::RangeSelector(const QString& name, ColorCalibrationWidget* parent, int min, int max) :
+  QGroupBox(name, parent), parent(parent)
 {
   QHBoxLayout* layout = new QHBoxLayout(this);
   setLayout(layout);
 
   slider = new QxtSpanSlider(Qt::Orientation::Horizontal, this);
+  slider->setTickPosition(QSlider::TicksBothSides);
+  slider->setTickInterval(10);
   slider->setHandleMovementMode(QxtSpanSlider::HandleMovementMode::FreeMovement);
   slider->setMinimum(min);
   slider->setMaximum(max);
@@ -46,31 +47,11 @@ RangeSelector::RangeSelector(const QString& name, ColorCalibrationWidget* parent
   setEnabled(false);
 }
 
-void RangeSelector::updateWidgets()
-{
-  if(parent->currentColor > ColorClasses::white)
-  {
-    setEnabled(true);
-    updateSlider(parent->colorCalibrationView.console.colorCalibration.ranges[parent->currentColor - 2]);
-  }
-  else
-    setEnabled(false);
-}
-
 void RangeSelector::setEnabled(bool value)
 {
   slider->setEnabled(value);
   lower->setEnabled(value);
   upper->setEnabled(value);
-}
-
-void RangeSelector::updateColorCalibration(int value, bool isMin)
-{
-  if(parent->currentColor > ColorClasses::white)
-  {
-    updateColorCalibration(value, isMin, parent->colorCalibrationView.console.colorCalibration.ranges[parent->currentColor - 2]);
-    parent->colorCalibrationView.console.colorCalibrationChanged = true;
-  }
 }
 
 void RangeSelector::sliderLowerChanged(int value)
@@ -93,4 +74,18 @@ void RangeSelector::labelLowerChanged(QString value)
 void RangeSelector::labelUpperChanged(QString value)
 {
   slider->setUpperValue(value.toInt());
+}
+
+void HueFieldSelector::updateWidgets()
+{
+  setEnabled(true);
+
+  updateSlider(parent->colorCalibrationView.console.colorCalibration.fieldHue);
+}
+
+void HueFieldSelector::updateColorCalibration(int value, bool isMin)
+{
+  RangeSelector::updateColorCalibration(value, isMin, parent->colorCalibrationView.console.colorCalibration.fieldHue);
+
+  parent->colorCalibrationView.console.colorCalibrationChanged = true;
 }

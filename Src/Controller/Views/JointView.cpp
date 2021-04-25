@@ -6,57 +6,10 @@
 
 #include "Controller/RobotConsole.h"
 
-#include <QHeaderView>
-#include <QApplication>
-#include <QPainter>
-#include <QFontMetrics>
-#include <QSettings>
-
 #include "JointView.h"
-#include "Platform/Thread.h"
 #include "Controller/RoboCupCtrl.h"
 #include "Controller/Visualization/HeaderedWidget.h"
-#include "Tools/SensorData.h"
-
-
-class JointWidget : public QWidget
-{
-private:
-  JointView& jointView;
-  unsigned int lastUpdateTimeStamp; /**< Timestamp of the last painted joint angles. */
-
-  QHeaderView* headerView;
-
-  QPainter painter;
-  int lineSpacing;
-  int textOffset;
-
-  QFont font;
-  QBrush altBrush;
-  QPen fontPen;
-  QPen noPen;
-  bool fillBackground;
-
-  QRect paintRect;
-  QRect paintRectField0;
-  QRect paintRectField1;
-  QRect paintRectField2;
-  QRect paintRectField3;
-  QRect paintRectField4;
-  QRect paintRectField5;
-
-public:
-  JointWidget(JointView& jointView, QHeaderView* headerView, QWidget* parent);
-  virtual ~JointWidget();
-
-  void update();
-  void paintEvent(QPaintEvent* event);
-
-private:
-  void print(const char* name, const char* value1, const char* value2, const char* value3, const char* value4, const char* value5);
-  void newSection();
-  QSize sizeHint() const { return QSize(260, 400); }
-};
+#include "Tools/Motion/SensorData.h"
 
 class JointHeaderedWidget : public HeaderedWidget, public SimRobot::Widget
 {
@@ -67,12 +20,12 @@ public:
   JointHeaderedWidget(JointView& sensorView, RobotConsole& console);
 
 private:
-  virtual QWidget* getWidget() {return this;}
-  virtual void update() {jointWidget->update();}
+  QWidget* getWidget() override { return this; }
+  void update() override { jointWidget->update(); }
 };
 
-JointWidget::JointWidget(JointView& jointView, QHeaderView* headerView, QWidget* parent) : QWidget(parent),
-  jointView(jointView), headerView(headerView), noPen(Qt::NoPen)
+JointWidget::JointWidget(JointView& jointView, QHeaderView* headerView, QWidget* parent) :
+  QWidget(parent), jointView(jointView), headerView(headerView), noPen(Qt::NoPen)
 {
   setFocusPolicy(Qt::StrongFocus);
   setBackgroundRole(QPalette::Base);
@@ -81,10 +34,6 @@ JointWidget::JointWidget(JointView& jointView, QHeaderView* headerView, QWidget*
   textOffset = fontMetrics.descent() + 1;
 
   font = QApplication::font();
-
-  const QPalette& pal(QApplication::palette());
-  altBrush = pal.alternateBase();
-  fontPen.setColor(pal.text().color());
 
   setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Expanding);
 
@@ -106,11 +55,16 @@ void JointWidget::update()
 {
   {
     SYNC_WITH(jointView.console);
-    if(jointView.jointSensorData.timestamp == lastUpdateTimeStamp)
+    if(jointView.jointSensorData.timestamp == lastUpdateTimestamp)
       return;
-    lastUpdateTimeStamp = jointView.jointSensorData.timestamp;
+    lastUpdateTimestamp = jointView.jointSensorData.timestamp;
   }
 
+  QWidget::update();
+}
+
+void JointWidget::forceUpdate()
+{
   QWidget::update();
 }
 
@@ -118,8 +72,8 @@ void JointWidget::paintEvent(QPaintEvent* event)
 {
   painter.begin(this);
   painter.setFont(font);
-  painter.setBrush(altBrush);
-  painter.setPen(fontPen);
+  painter.setBrush(RoboCupCtrl::controller->getAlternateBackgroundColor());
+  painter.setPen(QApplication::palette().text().color());
   fillBackground = false;
 
   paintRect = painter.window();
@@ -140,18 +94,18 @@ void JointWidget::paintEvent(QPaintEvent* event)
         newSection();
       if(i == Joints::lHand || i == Joints::rHand)
       {
-        jointRequest.angles[i] == JointAngles::off ? (void) strcpy(request, "off") : (void) sprintf(request, "%.1f %%", static_cast<float>(jointRequest.angles[i] * 100));
-        jointSensorData.angles[i] == JointAngles::off ? (void) strcpy(sensor, "?") : (void) sprintf(sensor, "%.1f %%", static_cast<float>(jointSensorData.angles[i] * 100));
+        jointRequest.angles[i] == JointAngles::off ? static_cast<void>(strcpy(request, "off")) : static_cast<void>(sprintf(request, "%.1f %%", static_cast<float>(jointRequest.angles[i] * 100)));
+        jointSensorData.angles[i] == JointAngles::off ? static_cast<void>(strcpy(sensor, "?")) : static_cast<void>(sprintf(sensor, "%.1f %%", static_cast<float>(jointSensorData.angles[i] * 100)));
       }
       else
       {
-        jointRequest.angles[i] == JointAngles::off ? (void) strcpy(request, "off") : (void) sprintf(request, "%.1f°", jointRequest.angles[i].toDegrees());
-        jointSensorData.angles[i] == JointAngles::off ? (void) strcpy(sensor, "?") : (void) sprintf(sensor, "%.1f°", jointSensorData.angles[i].toDegrees());
+        jointRequest.angles[i] == JointAngles::off ? static_cast<void>(strcpy(request, "off")) : static_cast<void>(sprintf(request, "%.1f°", jointRequest.angles[i].toDegrees()));
+        jointSensorData.angles[i] == JointAngles::off ? static_cast<void>(strcpy(sensor, "?")) : static_cast<void>(sprintf(sensor, "%.1f°", jointSensorData.angles[i].toDegrees()));
       }
-      jointSensorData.currents[i] == SensorData::off ? (void) strcpy(load, "off") : (void) sprintf(load, "%d mA", jointSensorData.currents[i]);
-      jointSensorData.temperatures[i] == 0 ? (void) strcpy(temp, "off") : (void) sprintf(temp, "%d °C", jointSensorData.temperatures[i]);
-      jointRequest.stiffnessData.stiffnesses[i] == StiffnessData::useDefault ? (void) strcpy(stiffness, "?") : (void) sprintf(stiffness, "%d %%", jointRequest.stiffnessData.stiffnesses[i]);
-      print(Joints::getName(static_cast<Joints::Joint>(i)), request, sensor, load, temp, stiffness);
+      jointSensorData.currents[i] == SensorData::off ? static_cast<void>(strcpy(load, "off")) : static_cast<void>(sprintf(load, "%d mA", jointSensorData.currents[i]));
+      jointSensorData.temperatures[i] == 0 ? static_cast<void>(strcpy(temp, "off")) : static_cast<void>(sprintf(temp, "%d °C", jointSensorData.temperatures[i]));
+      jointRequest.stiffnessData.stiffnesses[i] == StiffnessData::useDefault ? static_cast<void>(strcpy(stiffness, "?")) : static_cast<void>(sprintf(stiffness, "%d %%", jointRequest.stiffnessData.stiffnesses[i]));
+      print(TypeRegistry::getEnumName(static_cast<Joints::Joint>(i)), request, sensor, load, temp, stiffness);
     }
   }
   painter.end();
@@ -164,7 +118,7 @@ void JointWidget::print(const char* name, const char* value1, const char* value2
   {
     painter.setPen(noPen);
     painter.drawRect(paintRect.left(), paintRectField1.top(), paintRect.width(), paintRectField1.height());
-    painter.setPen(fontPen);
+    painter.setPen(QApplication::palette().text().color());
   }
   painter.drawText(paintRectField0, Qt::TextSingleLine | Qt::AlignVCenter, tr(name));
   painter.drawText(paintRectField1, Qt::TextSingleLine | Qt::AlignVCenter | Qt::AlignRight, tr(value1));
@@ -209,6 +163,7 @@ JointHeaderedWidget::JointHeaderedWidget(JointView& sensorView, RobotConsole& co
   headerView->resizeSection(5, 50);
   jointWidget = new JointWidget(sensorView, headerView, this);
   setWidget(jointWidget);
+  connect(getHeaderView(), SIGNAL(sectionResized(int, int, int)), jointWidget, SLOT(forceUpdate()));
 }
 
 JointView::JointView(const QString& fullName, RobotConsole& robotConsole, const JointSensorData& jointSensorData, const JointRequest& jointRequest) :

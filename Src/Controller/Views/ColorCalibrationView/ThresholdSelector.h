@@ -1,14 +1,14 @@
-/*
+/**
  * File:   ThresholdSelector.h
+ * @author <a href="mailto:jesse@tzi.de">Jesse Richter-Klug</a>
  * Author: marcel
  *
- * Created on October 16, 2013, 12:22 PM
  */
 
 #pragma once
 
 #include "Tools/Math/BHMath.h"
-#include "Representations/Configuration/ColorCalibration.h"
+#include "Representations/Configuration/FieldColors.h"
 
 #include <QSlider>
 #include <QLineEdit>
@@ -22,86 +22,58 @@ class ThresholdSelector : public QGroupBox
   Q_OBJECT
 
 public:
-  ThresholdSelector(const QString& name, ColorCalibrationWidget* parent,
-                    int min, int max);
+  ThresholdSelector(const QString& name, ColorCalibrationWidget* parent, int min, int max);
 
-  void updateWidgets();
+  virtual void updateWidgets() = 0;
   void setEnabled(bool value);
 
 protected:
   QSlider* slider;
+  const ColorCalibrationWidget* parent;
+
+  void updateColorCalibration(int value, unsigned char& color)
+  {
+    color = static_cast<unsigned char>(value);
+  }
+
+  void updateSlider(unsigned char color)
+  {
+    slider->setValue(static_cast<int>(color));
+  }
 
 private:
-  const ColorCalibrationWidget* parent;
   QLineEdit* lineEdit;
 
   /** updates the ColorCalibration, usually invoked by the slider/labels. */
-  void updateColorCalibration(int value);
-
-  /** must be implemented by subclasses to update the specific component of a color. */
-  virtual void updateColorCalibration(int value, ColorCalibration::WhiteThresholds& color) = 0;
-
-  /** must be implemented by subclasses to update widget with specific component of color. */
-  virtual void updateSlider(ColorCalibration::WhiteThresholds& color) = 0;
+  virtual void updateColorCalibration(int value) = 0;
 
 private slots:
   void sliderChanged(int value);
   void lineEditChanged(QString value);
 };
 
-class MinRSelector : public ThresholdSelector
+class ColorSelector : public ThresholdSelector
 {
-private:
-  void updateColorCalibration(int value, ColorCalibration::WhiteThresholds& color)
-  {
-    color.minR = slider->value();
-  }
-
-  void updateSlider(ColorCalibration::WhiteThresholds& color)
-  {
-    slider->setValue(color.minR);
-  }
-
 public:
-  MinRSelector(const QString& name, ColorCalibrationWidget* parent,
-               int min, int max)
-  : ThresholdSelector(name, parent, min, max) {}
+  ColorSelector(const QString& name, ColorCalibrationWidget* parent, int min, int max) :
+    ThresholdSelector(name, parent, min, max)
+  {}
+
+  void updateWidgets() override;
+
+private:
+  void updateColorCalibration(int value) override;
 };
 
-class MinBSelector : public ThresholdSelector
+class BlackWhiteSelector : public ThresholdSelector
 {
-private:
-  void updateColorCalibration(int value, ColorCalibration::WhiteThresholds& color)
-  {
-    color.minB = slider->value();
-  }
-
-  void updateSlider(ColorCalibration::WhiteThresholds& color)
-  {
-    slider->setValue(color.minB);
-  }
-
 public:
-  MinBSelector(const QString& name, ColorCalibrationWidget* parent,
-               int min, int max)
-  : ThresholdSelector(name, parent, min, max) {}
-};
+  BlackWhiteSelector(const QString& name, ColorCalibrationWidget* parent, int min, int max) :
+    ThresholdSelector(name, parent, min, max)
+  {}
 
-class MinRBSelector : public ThresholdSelector
-{
+  void updateWidgets() override;
+
 private:
-  void updateColorCalibration(int value, ColorCalibration::WhiteThresholds& color)
-  {
-    color.minRB = slider->value();
-  }
-
-  void updateSlider(ColorCalibration::WhiteThresholds& color)
-  {
-    slider->setValue(color.minRB);
-  }
-
-public:
-  MinRBSelector(const QString& name, ColorCalibrationWidget* parent,
-                int min, int max)
-  : ThresholdSelector(name, parent, min, max) {}
+  void updateColorCalibration(int value) override;
 };

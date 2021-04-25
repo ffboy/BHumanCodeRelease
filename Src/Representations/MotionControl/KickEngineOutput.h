@@ -9,10 +9,11 @@
 #include "Representations/Infrastructure/JointRequest.h"
 #include "Representations/MotionControl/KickRequest.h"
 #include "Tools/Math/Pose2f.h"
+#include "Tools/Math/Pose3f.h"
 
 /**
  * @struct KickEngineOutput
- * A struct that represents the output of the walking engine.
+ * A struct that represents the output of the kick engine.
  */
 STREAMABLE_WITH_BASE(KickEngineOutput, JointRequest,
 {,

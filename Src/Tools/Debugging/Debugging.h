@@ -17,7 +17,9 @@
 #endif
 #include "Tools/Global.h"
 
-#ifdef TARGET_TOOL
+#if defined TARGET_TOOL || (defined TARGET_ROBOT && defined NDEBUG)
+#include <iostream>
+
 /**
  * A macro for sending warning messages.
  * @param message A message streamable as text.
@@ -43,10 +45,13 @@
  */
 #define DECLARED_DEBUG_RESPONSE(id) if(false)
 #define DEBUG_RESPONSE(id) if(false)
-#define DECLARE_DEBUG_RESPONSE(id) ((void) 0)
-#define OUTPUT(type, format, expression) ((void) 0)
+#define DEBUG_RESPONSE_ONCE(id) if(false)
+#define DEBUG_RESPONSE_NOT(id) if(true)
+#define DECLARE_DEBUG_RESPONSE(id) static_cast<void>(0)
+#define OUTPUT(type, format, expression) static_cast<void>(0)
+#define OUTPUT_TEXT(expression) static_cast<void>(0)
 #else
- /**
+/**
  * A macro for sending debug messages.
  *
  * @param type The type of the message from the MessageID enum in MessageIDs.h
@@ -55,7 +60,7 @@
  *
  * Examples:
  * <pre>
- * OUTPUT(idImage, bin, *pMyImage);
+ * OUTPUT(idCameraImage, bin, *pMyCameraImage);
  * OUTPUT_TEXT("MyObject:myFunction() invoked");
  * OUTPUT_TEXT("i: " << i << ", j:" << j);
  * </pre>
@@ -68,7 +73,7 @@
   } \
   while(false)
 
- /**
+/**
  * Shortcut for outputting text messages.
  * @param expression A streaming expression to output.
  */
@@ -79,20 +84,16 @@
  * @param message A message streamable as text.
  */
 #ifdef NDEBUG
-#define OUTPUT_WARNING(message) ((void) 0)
+#define OUTPUT_WARNING(message) static_cast<void>(0)
 #else
 #define OUTPUT_WARNING(message) \
   do \
   { \
-    OUTPUT_TEXT("Warning: " << message); \
-    OutTextSize _size; \
-    _size << "Warning: " << message; \
-    char* _buf = new char[_size.getSize() + 1]; \
-    OutTextMemory _stream(_buf); \
+    if(Global::debugOutExists()) \
+      OUTPUT_TEXT("Warning: " << message); \
+    OutTextRawMemory _stream; \
     _stream << "Warning: " << message; \
-    _buf[_size.getSize()] = 0; \
-    DebugRequestTable::print(_buf); \
-    delete [] _buf; \
+    DebugRequestTable::print(_stream.data()); \
   } \
   while(false)
 #endif
@@ -106,15 +107,11 @@
 #define OUTPUT_ERROR(message) \
   do \
   { \
-    OUTPUT_TEXT("Error: " << message); \
-    OutTextSize _size; \
-    _size << "Error: " << message; \
-    char* _buf = new char[_size.getSize() + 1]; \
-    OutTextMemory _stream(_buf); \
+    if(Global::debugOutExists()) \
+      OUTPUT_TEXT("Error: " << message); \
+    OutTextRawMemory _stream; \
     _stream << "Error: " << message; \
-    _buf[_size.getSize()] = 0; \
-    DebugRequestTable::print(_buf); \
-    delete [] _buf; \
+    DebugRequestTable::print(_stream.data()); \
   } \
   while(false)
 
@@ -125,7 +122,7 @@
  */
 inline bool _debugRequestActive(const char* id)
 {
-  if(Global::getDebugRequestTable().poll && Global::getDebugRequestTable().notYetPolled(id))
+  if(Global::getDebugRequestTable().pollCounter && Global::getDebugRequestTable().notYetPolled(id))
     OUTPUT(idDebugResponse, text, id << Global::getDebugRequestTable().isActive(id));
   return Global::getDebugRequestTable().isActive(id);
 }
@@ -137,7 +134,7 @@ inline bool _debugRequestActive(const char* id)
  */
 #define DECLARE_DEBUG_RESPONSE(id) \
   do \
-    if(Global::getDebugRequestTable().poll && Global::getDebugRequestTable().notYetPolled(id)) \
+    if(Global::getDebugRequestTable().pollCounter && Global::getDebugRequestTable().notYetPolled(id)) \
       OUTPUT(idDebugResponse, text, id << Global::getDebugRequestTable().isActive(id)); \
   while(false)
 

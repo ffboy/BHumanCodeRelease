@@ -1,7 +1,7 @@
 /****************************************************************************
 **
-** Copyright (C) 2015 The Qt Company Ltd.
-** Contact: http://www.qt.io/licensing/
+** Copyright (C) 2016 The Qt Company Ltd.
+** Contact: https://www.qt.io/licensing/
 **
 ** This file is part of the QtGui module of the Qt Toolkit.
 **
@@ -11,29 +11,27 @@
 ** accordance with the commercial license agreement provided with the
 ** Software or, alternatively, in accordance with the terms contained in
 ** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see http://www.qt.io/terms-conditions. For further
-** information use the contact form at http://www.qt.io/contact-us.
+** and conditions see https://www.qt.io/terms-conditions. For further
+** information use the contact form at https://www.qt.io/contact-us.
 **
 ** GNU Lesser General Public License Usage
 ** Alternatively, this file may be used under the terms of the GNU Lesser
-** General Public License version 2.1 or version 3 as published by the Free
-** Software Foundation and appearing in the file LICENSE.LGPLv21 and
-** LICENSE.LGPLv3 included in the packaging of this file. Please review the
-** following information to ensure the GNU Lesser General Public License
-** requirements will be met: https://www.gnu.org/licenses/lgpl.html and
-** http://www.gnu.org/licenses/old-licenses/lgpl-2.1.html.
-**
-** As a special exception, The Qt Company gives you certain additional
-** rights. These rights are described in The Qt Company LGPL Exception
-** version 1.1, included in the file LGPL_EXCEPTION.txt in this package.
+** General Public License version 3 as published by the Free Software
+** Foundation and appearing in the file LICENSE.LGPL3 included in the
+** packaging of this file. Please review the following information to
+** ensure the GNU Lesser General Public License version 3 requirements
+** will be met: https://www.gnu.org/licenses/lgpl-3.0.html.
 **
 ** GNU General Public License Usage
 ** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 3.0 as published by the Free Software
-** Foundation and appearing in the file LICENSE.GPL included in the
-** packaging of this file.  Please review the following information to
-** ensure the GNU General Public License version 3.0 requirements will be
-** met: http://www.gnu.org/copyleft/gpl.html.
+** General Public License version 2.0 or (at your option) the GNU General
+** Public license version 3 or any later version approved by the KDE Free
+** Qt Foundation. The licenses are as published by the Free Software
+** Foundation and appearing in the file LICENSE.GPL2 and LICENSE.GPL3
+** included in the packaging of this file. Please review the following
+** information to ensure the GNU General Public License requirements will
+** be met: https://www.gnu.org/licenses/gpl-2.0.html and
+** https://www.gnu.org/licenses/gpl-3.0.html.
 **
 ** $QT_END_LICENSE$
 **
@@ -41,6 +39,7 @@
 #ifndef QTRANSFORM_H
 #define QTRANSFORM_H
 
+#include <QtGui/qtguiglobal.h>
 #include <QtGui/qmatrix.h>
 #include <QtGui/qpainterpath.h>
 #include <QtGui/qpolygon.h>
@@ -50,15 +49,8 @@
 #include <QtCore/qpoint.h>
 #include <QtCore/qrect.h>
 
-#if defined(Q_OS_VXWORKS) && defined(m_type)
-#  undef m_type
-#endif
-
-QT_BEGIN_HEADER
-
 QT_BEGIN_NAMESPACE
 
-QT_MODULE(Gui)
 
 class QVariant;
 
@@ -82,6 +74,19 @@ public:
     QTransform(qreal h11, qreal h12, qreal h21,
                qreal h22, qreal dx, qreal dy);
     explicit QTransform(const QMatrix &mtx);
+
+#if QT_VERSION < QT_VERSION_CHECK(6, 0, 0)
+    // ### Qt 6: remove; the compiler-generated ones are fine!
+    QTransform &operator=(QTransform &&other) Q_DECL_NOTHROW // = default
+    { memcpy(this, &other, sizeof(QTransform)); return *this; }
+    QTransform &operator=(const QTransform &) Q_DECL_NOTHROW; // = default
+    QTransform(QTransform &&other) Q_DECL_NOTHROW // = default
+        : affine(Qt::Uninitialized)
+    { memcpy(this, &other, sizeof(QTransform)); }
+    QTransform(const QTransform &other) Q_DECL_NOTHROW // = default
+        : affine(Qt::Uninitialized)
+    { memcpy(this, &other, sizeof(QTransform)); }
+#endif
 
     bool isAffine() const;
     bool isIdentity() const;
@@ -111,9 +116,9 @@ public:
                    qreal m21, qreal m22, qreal m23,
                    qreal m31, qreal m32, qreal m33);
 
-    QTransform inverted(bool *invertible = 0) const;
-    QTransform adjoint() const;
-    QTransform transposed() const;
+    Q_REQUIRED_RESULT QTransform inverted(bool *invertible = Q_NULLPTR) const;
+    Q_REQUIRED_RESULT QTransform adjoint() const;
+    Q_REQUIRED_RESULT QTransform transposed() const;
 
     QTransform &translate(qreal dx, qreal dy);
     QTransform &scale(qreal sx, qreal sy);
@@ -132,8 +137,6 @@ public:
 
     QTransform &operator*=(const QTransform &);
     QTransform operator*(const QTransform &o) const;
-
-    QTransform &operator=(const QTransform &);
 
     operator QVariant() const;
 
@@ -169,12 +172,18 @@ private:
         : affine(h11, h12, h21, h22, h31, h32, true)
         , m_13(h13), m_23(h23), m_33(h33)
         , m_type(TxNone)
-        , m_dirty(TxProject) {}
+        , m_dirty(TxProject)
+        , d(Q_NULLPTR)
+    {
+    }
     inline QTransform(bool)
         : affine(true)
         , m_13(0), m_23(0), m_33(1)
         , m_type(TxNone)
-        , m_dirty(TxNone) {}
+        , m_dirty(TxNone)
+        , d(Q_NULLPTR)
+    {
+    }
     inline TransformationType inline_type() const;
     QMatrix affine;
     qreal   m_13;
@@ -183,11 +192,14 @@ private:
 
     mutable uint m_type : 5;
     mutable uint m_dirty : 5;
-
+#if QT_VERSION < QT_VERSION_CHECK(6, 0, 0)
     class Private;
     Private *d;
+#endif
 };
 Q_DECLARE_TYPEINFO(QTransform, Q_MOVABLE_TYPE);
+
+Q_GUI_EXPORT Q_DECL_CONST_FUNCTION uint qHash(const QTransform &key, uint seed = 0) Q_DECL_NOTHROW;
 
 /******* inlines *****/
 inline QTransform::TransformationType QTransform::inline_type() const
@@ -279,6 +291,10 @@ inline qreal QTransform::dy() const
     return affine._dy;
 }
 
+QT_WARNING_PUSH
+QT_WARNING_DISABLE_CLANG("-Wfloat-equal")
+QT_WARNING_DISABLE_GCC("-Wfloat-equal")
+
 inline QTransform &QTransform::operator*=(qreal num)
 {
     if (num == 1.)
@@ -336,6 +352,8 @@ inline QTransform &QTransform::operator-=(qreal num)
     return *this;
 }
 
+QT_WARNING_POP
+
 inline bool qFuzzyCompare(const QTransform& t1, const QTransform& t2)
 {
     return qFuzzyCompare(t1.m11(), t2.m11())
@@ -362,34 +380,32 @@ Q_GUI_EXPORT QDebug operator<<(QDebug, const QTransform &);
 /****** end stream functions *******************/
 
 // mathematical semantics
-Q_GUI_EXPORT_INLINE QPoint operator*(const QPoint &p, const QTransform &m)
+inline QPoint operator*(const QPoint &p, const QTransform &m)
 { return m.map(p); }
-Q_GUI_EXPORT_INLINE QPointF operator*(const QPointF &p, const QTransform &m)
+inline QPointF operator*(const QPointF &p, const QTransform &m)
 { return m.map(p); }
-Q_GUI_EXPORT_INLINE QLineF operator*(const QLineF &l, const QTransform &m)
+inline QLineF operator*(const QLineF &l, const QTransform &m)
 { return m.map(l); }
-Q_GUI_EXPORT_INLINE QLine operator*(const QLine &l, const QTransform &m)
+inline QLine operator*(const QLine &l, const QTransform &m)
 { return m.map(l); }
-Q_GUI_EXPORT_INLINE QPolygon operator *(const QPolygon &a, const QTransform &m)
+inline QPolygon operator *(const QPolygon &a, const QTransform &m)
 { return m.map(a); }
-Q_GUI_EXPORT_INLINE QPolygonF operator *(const QPolygonF &a, const QTransform &m)
+inline QPolygonF operator *(const QPolygonF &a, const QTransform &m)
 { return m.map(a); }
-Q_GUI_EXPORT_INLINE QRegion operator *(const QRegion &r, const QTransform &m)
+inline QRegion operator *(const QRegion &r, const QTransform &m)
 { return m.map(r); }
-Q_GUI_EXPORT_INLINE QPainterPath operator *(const QPainterPath &p, const QTransform &m)
+inline QPainterPath operator *(const QPainterPath &p, const QTransform &m)
 { return m.map(p); }
 
-Q_GUI_EXPORT_INLINE QTransform operator *(const QTransform &a, qreal n)
+inline QTransform operator *(const QTransform &a, qreal n)
 { QTransform t(a); t *= n; return t; }
-Q_GUI_EXPORT_INLINE QTransform operator /(const QTransform &a, qreal n)
+inline QTransform operator /(const QTransform &a, qreal n)
 { QTransform t(a); t /= n; return t; }
-Q_GUI_EXPORT_INLINE QTransform operator +(const QTransform &a, qreal n)
+inline QTransform operator +(const QTransform &a, qreal n)
 { QTransform t(a); t += n; return t; }
-Q_GUI_EXPORT_INLINE QTransform operator -(const QTransform &a, qreal n)
+inline QTransform operator -(const QTransform &a, qreal n)
 { QTransform t(a); t -= n; return t; }
 
 QT_END_NAMESPACE
 
-QT_END_HEADER
-
-#endif
+#endif // QTRANSFORM_H

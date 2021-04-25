@@ -14,6 +14,7 @@
 
 class KickViewWidget;
 class KickEngineData;
+class StableKickEngineData;
 class RotationMatrix_getPackedAngleAxisFaulty_Test;
 
 /**
@@ -46,10 +47,10 @@ public:
   }
 
   /**
-  * Multiplication of this matrix by vector.
-  * @param  vector  The vector this one is multiplied by
-  * @return         A new vector containing the result
-  */
+   * Multiplication of this matrix by vector.
+   * @param  vector  The vector this one is multiplied by
+   * @return         A new vector containing the result
+   */
   Vector3f operator*(const Vector3f& vector) const
   {
     return Matrix3f::operator*(vector);
@@ -204,15 +205,18 @@ public:
    * Creates a RotationMatrix rotatied around the z, y and x components of the Vector3 (in this order!).
    * Equivalent to fromRotationZ(rotation.z).rotateY(rotation.y).rotateX(rotation.x);
    */
-  static RotationMatrix fromEulerAngles(const Vector3f rotation);
+  static RotationMatrix fromEulerAngles(const Vector3f& rotation);
 
 private:
   // The following is a hack in order to keep the kicks from the Kickengine working...
   friend class KickViewWidget;
   friend class KickEngineData;
+  friend class StableKickEngineData;
   friend class RotationMatrix_getPackedAngleAxisFaulty_Test;
 
   Vector3f getPackedAngleAxisFaulty() const;
+
+  static void reg();
 };
 
 /**
@@ -223,9 +227,7 @@ private:
  */
 inline Out& operator<<(Out& stream, const RotationMatrix& rotationMatrix)
 {
-  STREAM_REGISTER_BEGIN_EXT(rotationMatrix);
   STREAM_BASE_EXT(stream, rotationMatrix, Matrix3f);
-  STREAM_REGISTER_FINISH;
   return stream;
 }
 
@@ -237,8 +239,6 @@ inline Out& operator<<(Out& stream, const RotationMatrix& rotationMatrix)
  */
 inline In& operator>>(In& stream, RotationMatrix& rotationMatrix)
 {
-  STREAM_REGISTER_BEGIN_EXT(rotationMatrix);
   STREAM_BASE_EXT(stream, rotationMatrix, Matrix3f);
-  STREAM_REGISTER_FINISH;
   return stream;
 }

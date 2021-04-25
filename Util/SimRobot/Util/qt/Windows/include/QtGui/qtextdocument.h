@@ -1,7 +1,7 @@
 /****************************************************************************
 **
-** Copyright (C) 2015 The Qt Company Ltd.
-** Contact: http://www.qt.io/licensing/
+** Copyright (C) 2016 The Qt Company Ltd.
+** Contact: https://www.qt.io/licensing/
 **
 ** This file is part of the QtGui module of the Qt Toolkit.
 **
@@ -11,29 +11,27 @@
 ** accordance with the commercial license agreement provided with the
 ** Software or, alternatively, in accordance with the terms contained in
 ** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see http://www.qt.io/terms-conditions. For further
-** information use the contact form at http://www.qt.io/contact-us.
+** and conditions see https://www.qt.io/terms-conditions. For further
+** information use the contact form at https://www.qt.io/contact-us.
 **
 ** GNU Lesser General Public License Usage
 ** Alternatively, this file may be used under the terms of the GNU Lesser
-** General Public License version 2.1 or version 3 as published by the Free
-** Software Foundation and appearing in the file LICENSE.LGPLv21 and
-** LICENSE.LGPLv3 included in the packaging of this file. Please review the
-** following information to ensure the GNU Lesser General Public License
-** requirements will be met: https://www.gnu.org/licenses/lgpl.html and
-** http://www.gnu.org/licenses/old-licenses/lgpl-2.1.html.
-**
-** As a special exception, The Qt Company gives you certain additional
-** rights. These rights are described in The Qt Company LGPL Exception
-** version 1.1, included in the file LGPL_EXCEPTION.txt in this package.
+** General Public License version 3 as published by the Free Software
+** Foundation and appearing in the file LICENSE.LGPL3 included in the
+** packaging of this file. Please review the following information to
+** ensure the GNU Lesser General Public License version 3 requirements
+** will be met: https://www.gnu.org/licenses/lgpl-3.0.html.
 **
 ** GNU General Public License Usage
 ** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 3.0 as published by the Free Software
-** Foundation and appearing in the file LICENSE.GPL included in the
-** packaging of this file.  Please review the following information to
-** ensure the GNU General Public License version 3.0 requirements will be
-** met: http://www.gnu.org/copyleft/gpl.html.
+** General Public License version 2.0 or (at your option) the GNU General
+** Public license version 3 or any later version approved by the KDE Free
+** Qt Foundation. The licenses are as published by the Free Software
+** Foundation and appearing in the file LICENSE.GPL2 and LICENSE.GPL3
+** included in the packaging of this file. Please review the following
+** information to ensure the GNU General Public License requirements will
+** be met: https://www.gnu.org/licenses/gpl-2.0.html and
+** https://www.gnu.org/licenses/gpl-3.0.html.
 **
 ** $QT_END_LICENSE$
 **
@@ -42,22 +40,22 @@
 #ifndef QTEXTDOCUMENT_H
 #define QTEXTDOCUMENT_H
 
+#include <QtGui/qtguiglobal.h>
 #include <QtCore/qobject.h>
 #include <QtCore/qsize.h>
 #include <QtCore/qrect.h>
+#include <QtCore/qvariant.h>
 #include <QtGui/qfont.h>
-
-QT_BEGIN_HEADER
+#include <QtCore/qurl.h>
 
 QT_BEGIN_NAMESPACE
 
-QT_MODULE(Gui)
 
 class QTextFormatCollection;
 class QTextListFormat;
 class QRect;
 class QPainter;
-class QPrinter;
+class QPagedPaintDevice;
 class QAbstractTextDocumentLayout;
 class QPoint;
 class QTextObject;
@@ -65,7 +63,6 @@ class QTextFormat;
 class QTextFrame;
 class QTextBlock;
 class QTextCodec;
-class QUrl;
 class QVariant;
 class QRectF;
 class QTextOption;
@@ -75,16 +72,7 @@ template<typename T> class QVector;
 
 namespace Qt
 {
-    enum HitTestAccuracy { ExactHit, FuzzyHit };
-    enum WhiteSpaceMode {
-        WhiteSpaceNormal,
-        WhiteSpacePre,
-        WhiteSpaceNoWrap,
-        WhiteSpaceModeUndefined = -1
-    };
-
     Q_GUI_EXPORT bool mightBeRichText(const QString&);
-    Q_GUI_EXPORT QString escape(const QString& plain);
     Q_GUI_EXPORT QString convertFromPlainText(const QString &plain, WhiteSpaceMode mode = WhiteSpacePre);
 
 #ifndef QT_NO_TEXTCODEC
@@ -125,13 +113,14 @@ class Q_GUI_EXPORT QTextDocument : public QObject
     Q_PROPERTY(int maximumBlockCount READ maximumBlockCount WRITE setMaximumBlockCount)
     Q_PROPERTY(qreal documentMargin READ documentMargin WRITE setDocumentMargin)
     QDOC_PROPERTY(QTextOption defaultTextOption READ defaultTextOption WRITE setDefaultTextOption)
+    Q_PROPERTY(QUrl baseUrl READ baseUrl WRITE setBaseUrl NOTIFY baseUrlChanged)
 
 public:
-    explicit QTextDocument(QObject *parent = 0);
-    explicit QTextDocument(const QString &text, QObject *parent = 0);
+    explicit QTextDocument(QObject *parent = Q_NULLPTR);
+    explicit QTextDocument(const QString &text, QObject *parent = Q_NULLPTR);
     ~QTextDocument();
 
-    QTextDocument *clone(QObject *parent = 0) const;
+    QTextDocument *clone(QObject *parent = Q_NULLPTR) const;
 
     bool isEmpty() const;
     virtual void clear();
@@ -162,6 +151,7 @@ public:
     void setHtml(const QString &html);
 #endif
 
+    QString toRawText() const;
     QString toPlainText() const;
     void setPlainText(const QString &text);
 
@@ -175,11 +165,18 @@ public:
     };
     Q_DECLARE_FLAGS(FindFlags, FindFlag)
 
-    QTextCursor find(const QString &subString, int from = 0, FindFlags options = 0) const;
-    QTextCursor find(const QString &subString, const QTextCursor &from, FindFlags options = 0) const;
+    QTextCursor find(const QString &subString, int from = 0, FindFlags options = FindFlags()) const;
+    QTextCursor find(const QString &subString, const QTextCursor &cursor, FindFlags options = FindFlags()) const;
 
-    QTextCursor find(const QRegExp &expr, int from = 0, FindFlags options = 0) const;
-    QTextCursor find(const QRegExp &expr, const QTextCursor &from, FindFlags options = 0) const;
+#ifndef QT_NO_REGEXP
+    QTextCursor find(const QRegExp &expr, int from = 0, FindFlags options = FindFlags()) const;
+    QTextCursor find(const QRegExp &expr, const QTextCursor &cursor, FindFlags options = FindFlags()) const;
+#endif
+
+#ifndef QT_NO_REGULAREXPRESSION
+    QTextCursor find(const QRegularExpression &expr, int from = 0, FindFlags options = FindFlags()) const;
+    QTextCursor find(const QRegularExpression &expr, const QTextCursor &cursor, FindFlags options = FindFlags()) const;
+#endif
 
     QTextFrame *frameAt(int pos) const;
     QTextFrame *rootFrame() const;
@@ -206,9 +203,7 @@ public:
 
     bool isModified() const;
 
-#ifndef QT_NO_PRINTER
-    void print(QPrinter *printer) const;
-#endif
+    void print(QPagedPaintDevice *printer) const;
 
     enum ResourceType {
         HtmlResource  = 1,
@@ -269,11 +264,14 @@ public:
     QTextOption defaultTextOption() const;
     void setDefaultTextOption(const QTextOption &option);
 
+    QUrl baseUrl() const;
+    void setBaseUrl(const QUrl &url);
+
     Qt::CursorMoveStyle defaultCursorMoveStyle() const;
     void setDefaultCursorMoveStyle(Qt::CursorMoveStyle style);
 
 Q_SIGNALS:
-    void contentsChange(int from, int charsRemoves, int charsAdded);
+    void contentsChange(int from, int charsRemoved, int charsAdded);
     void contentsChanged();
     void undoAvailable(bool);
     void redoAvailable(bool);
@@ -281,7 +279,7 @@ Q_SIGNALS:
     void modificationChanged(bool m);
     void cursorPositionChanged(const QTextCursor &cursor);
     void blockCountChanged(int newBlockCount);
-
+    void baseUrlChanged(const QUrl &url);
     void documentLayoutChanged();
 
 public Q_SLOTS:
@@ -292,7 +290,7 @@ public Q_SLOTS:
 
 protected:
     virtual QTextObject *createObject(const QTextFormat &f);
-    virtual QVariant loadResource(int type, const QUrl &name);
+    Q_INVOKABLE virtual QVariant loadResource(int type, const QUrl &name);
 
     QTextDocument(QTextDocumentPrivate &dd, QObject *parent);
 public:
@@ -306,7 +304,5 @@ private:
 Q_DECLARE_OPERATORS_FOR_FLAGS(QTextDocument::FindFlags)
 
 QT_END_NAMESPACE
-
-QT_END_HEADER
 
 #endif // QTEXTDOCUMENT_H

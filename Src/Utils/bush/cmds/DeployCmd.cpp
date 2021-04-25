@@ -14,10 +14,10 @@
 
 DeployCmd DeployCmd::theDeployCmd;
 
-DeployCmd::DeployTask::DeployTask(Context &context, const QString& buildConfig, Team* team, Robot *robot)
-: RobotTask(context, robot),
-  buildConfig(buildConfig),
-  team(team)
+DeployCmd::DeployTask::DeployTask(Context& context, const QString& buildConfig, Team* team, Robot* robot)
+  : RobotTask(context, robot),
+    buildConfig(buildConfig),
+    team(team)
 {}
 
 bool DeployCmd::DeployTask::execute()
@@ -33,21 +33,26 @@ bool DeployCmd::DeployTask::execute()
   args.push_back(QString("-nr"));
   args.push_back(buildConfig);
   args.push_back(fromString(robot->getBestIP(context())));
-  args.push_back(QString("-r"));
-  args.push_back(QString("-n"));
+  if(team->getPlayersPerNumber()[team->getPlayerNumber(*robot) - 1][0] == robot)
+    args.push_back(QString("-b"));
+  args.push_back(QString("-t"));
   args.push_back(QString::number(team->number));
   args.push_back(QString("-o"));
   args.push_back(QString::number(team->port));
-  args.push_back(QString("-t"));
+  args.push_back(QString("-c"));
   args.push_back(team->color.c_str());
   args.push_back(QString("-p"));
   args.push_back(QString::number(team->getPlayerNumber(*robot)));
+  args.push_back(QString("-s"));
+  args.push_back(team->scenario.c_str());
   args.push_back(QString("-l"));
   args.push_back(team->location.c_str());
   args.push_back(QString("-w"));
   args.push_back(team->wlanConfig.c_str());
   args.push_back(QString("-v"));
   args.push_back(QString::number(team->volume));
+  args.push_back(QString("-m"));
+  args.push_back(QString::number(team->magicNumber));
 
   ProcessRunner r(context(), command, args);
   r.run();
@@ -88,7 +93,7 @@ std::vector<std::string> DeployCmd::complete(const std::string& cmdLine) const
     return getBuildConfigs(commandWithArgs[1]);
 }
 
-bool DeployCmd::preExecution(Context &context, const std::vector<std::string> &params)
+bool DeployCmd::preExecution(Context& context, const std::vector<std::string>& params)
 {
   team = context.getSelectedTeam();
   if(!team)
@@ -102,10 +107,15 @@ bool DeployCmd::preExecution(Context &context, const std::vector<std::string> &p
     buildConfig = fromString(params[0]);
 
   // compile and deploy if compiling was successful
-  return context.execute("compile " + toString(buildConfig));
+  if(team->compile)
+  {
+    if(!context.execute("compile " + toString(buildConfig)))
+      return false;
+  }
+  return true;
 }
 
-Task* DeployCmd::perRobotExecution(Context &context, Robot &robot)
+Task* DeployCmd::perRobotExecution(Context& context, Robot& robot)
 {
   return new DeployTask(context, buildConfig, team, &robot);
 }

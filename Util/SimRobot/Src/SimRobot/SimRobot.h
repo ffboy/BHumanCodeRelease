@@ -7,7 +7,7 @@
 #pragma once
 
 class QString;
-template <typename T> class QVector;
+template<typename T> class QVector;
 class QIcon;
 class QMenu;
 class QSettings;
@@ -23,9 +23,9 @@ namespace SimRobot
     virtual QWidget* getWidget() = 0;
     virtual void update() {}
     virtual bool canClose() {return true;}
-    virtual QMenu* createFileMenu() const {return 0;}
-    virtual QMenu* createEditMenu() const {return 0;}
-    virtual QMenu* createUserMenu() const {return 0;}
+    virtual QMenu* createFileMenu() const {return nullptr;}
+    virtual QMenu* createEditMenu() const {return nullptr;}
+    virtual QMenu* createUserMenu() const {return nullptr;}
     virtual void paint(QPainter& painter) {}
   };
 
@@ -36,15 +36,24 @@ namespace SimRobot
   {
   public:
     virtual ~Object() = default;
-    virtual Widget* createWidget() {return 0;}
+    virtual Widget* createWidget() {return nullptr;}
 
     /** Accesses pathname to the object in the scene graph
     * @return The pathname
     */
     virtual const QString& getFullName() const = 0;
 
-    virtual const QIcon* getIcon() const {return 0;}
+    virtual const QIcon* getIcon() const {return nullptr;}
     virtual int getKind() const {return 0;}
+
+    /**
+     * For objects which do not have a widget (i.e. do not override createWidget() and are
+     * registered with the SimRobot::Flag::windowless flag), this function provides a callback
+     * that is called when the item is clicked in the Scene Graph.
+     * This is done in SceneGraphDockWidget::itemActivated(), just before MainWindow::openObject()
+     * would have been called if we were dealing with a non-windowless widget item.
+     */
+    virtual void widgetlessActivationCallback() {}
   };
 
   /**
@@ -119,7 +128,7 @@ namespace SimRobot
     /**
     * Create a menu for this module. If 0 is returned, there is no menu.
     */
-    virtual QMenu* createUserMenu() const {return 0;}
+    virtual QMenu* createUserMenu() const {return nullptr;}
   };
 
   /**
@@ -147,6 +156,7 @@ namespace SimRobot
     virtual const QString& getAppPath() const = 0;
     virtual QSettings& getSettings() = 0;
     virtual QSettings& getLayoutSettings() = 0;
+    virtual bool isSimRunning() = 0;
     virtual void simReset() = 0;
     virtual void simStart() = 0;
     virtual void simStep() = 0;

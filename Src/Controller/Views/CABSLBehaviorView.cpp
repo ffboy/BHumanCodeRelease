@@ -1,9 +1,9 @@
 /**
-* @file Controller/Views/CABSLBehaviorView.cpp
-* Implementation of class CABSLBehaviorView
-* @author <a href="mailto:Thomas.Roefer@dfki.de">Thomas Röfer</a>
-* @author Colin Graf
-*/
+ * @file Controller/Views/CABSLBehaviorView.cpp
+ * Implementation of class CABSLBehaviorView
+ * @author Thomas Röfer
+ * @author Colin Graf
+ */
 
 #include <QHeaderView>
 #include <QApplication>
@@ -13,16 +13,15 @@
 #include <QScrollArea>
 #include <QSettings>
 
-#include "Controller/RobotConsole.h"
-#include "Controller/RoboCupCtrl.h"
-#include "Platform/Thread.h"
 #include "CABSLBehaviorView.h"
+#include "Controller/RoboCupCtrl.h"
+#include "Controller/RobotConsole.h"
 
 class CABSLBehaviorWidget : public QWidget
 {
 public:
-  CABSLBehaviorWidget(CABSLBehaviorView& cabslBehaviorView, QWidget* parent) : QWidget(parent),
-    cabslBehaviorView(cabslBehaviorView), noPen(Qt::NoPen)
+  CABSLBehaviorWidget(CABSLBehaviorView& cabslBehaviorView, QWidget* parent) :
+    QWidget(parent), cabslBehaviorView(cabslBehaviorView)
   {
     setFocusPolicy(Qt::StrongFocus);
     setBackgroundRole(QPalette::Base);
@@ -32,10 +31,6 @@ public:
     boldFont.setBold(true);
     setFontPointSize(getFontPointSize());
 
-    const QPalette& pal(QApplication::palette());
-    altBrush = pal.alternateBase();
-    fontPen.setColor(pal.text().color());
-
     setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Expanding);
   }
 
@@ -43,9 +38,9 @@ public:
   {
     {
       SYNC_WITH(cabslBehaviorView.console);
-      if(cabslBehaviorView.timeStamp == lastCABSLBehaviorDebugInfoTimeStamp)
+      if(cabslBehaviorView.timestamp == lastCABSLBehaviorDebugInfoTimestamp)
         return;
-      lastCABSLBehaviorDebugInfoTimeStamp = cabslBehaviorView.timeStamp;
+      lastCABSLBehaviorDebugInfoTimestamp = cabslBehaviorView.timestamp;
     }
     QWidget::update();
   }
@@ -64,12 +59,12 @@ public:
     textOffset = me.descent() + 1;
   }
 
-  void paintEvent(QPaintEvent *event)
+  void paintEvent(QPaintEvent* event)
   {
     painter.begin(this);
     painter.setFont(font);
-    painter.setBrush(altBrush);
-    painter.setPen(fontPen);
+    painter.setBrush(RoboCupCtrl::controller->getAlternateBackgroundColor());
+    painter.setPen(QApplication::palette().text().color());
     fillBackground = false;
 
     char formattedTime[65];
@@ -81,24 +76,22 @@ public:
       SYNC_WITH(cabslBehaviorView.console);
       const ActivationGraph& info(cabslBehaviorView.activationGraph);
 
-      for(std::vector<ActivationGraph::Node>::const_iterator i = info.graph.begin(), end = info.graph.end(); i != end; ++i)
+      for(const ActivationGraph::Node& activeOption : info.graph)
       {
-        const ActivationGraph::Node& activeOption = *i;
         paintRectField0.setLeft(defaultLeft + 10 * activeOption.depth);
 
         sprintf(formattedTime, "%.02f", float(activeOption.optionTime) / 1000.f);
         print(activeOption.option.c_str(), formattedTime, true, true);
 
-        if(!i->parameters.empty())
-        {
-          paintRectField0.setLeft(defaultLeft + 10 * activeOption.depth + 5);
-          for(const std::string& parameter : i->parameters)
-            print(parameter.c_str(), "", false, false);
-        }
-
         paintRectField0.setLeft(defaultLeft + 10 * activeOption.depth + 5);
-        sprintf(formattedTime, "%.02f", float(activeOption.stateTime) / 1000.f);
-        print(("state = " + activeOption.state).c_str(), formattedTime, false, true);
+        for(const std::string& parameter : activeOption.parameters)
+          print(parameter.c_str(), "", false, false);
+
+        if(!activeOption.state.empty())
+        {
+          sprintf(formattedTime, "%.02f", float(activeOption.stateTime) / 1000.f);
+          print(("state = " + activeOption.state).c_str(), formattedTime, false, true);
+        }
         newBlock();
       }
     }
@@ -110,45 +103,40 @@ public:
 
 private:
   CABSLBehaviorView& cabslBehaviorView;
-  unsigned int lastCABSLBehaviorDebugInfoTimeStamp; /**< Timestamp of the last painted info. */
+  unsigned int lastCABSLBehaviorDebugInfoTimestamp = 0; /**< Timestamp of the last painted info. */
   QPainter painter;
   int lineSpacing;
   int textOffset;
 
   QFont font;
   QFont boldFont;
-  QBrush altBrush;
-  QPen fontPen;
-  QPen noPen;
+  QPen noPen = Qt::NoPen;
   bool fillBackground;
 
   QRect paintRect;
   QRect paintRectField0;
 
-  void print(const char* name, const char* value, bool bold = false, bool rightAlign = false)
+  void print(const std::string& name, const std::string& value, bool bold = false, bool rightAlign = false)
   {
     if(fillBackground)
     {
       painter.setPen(noPen);
       painter.drawRect(paintRect.left(), paintRectField0.top(), paintRect.width(), paintRectField0.height());
-      painter.setPen(fontPen);
+      painter.setPen(QApplication::palette().text().color());
     }
-    if(name)
-    {
-      if(bold)
-        painter.setFont(boldFont);
-      painter.drawText(paintRectField0, (!value ? Qt::TextDontClip : 0) | Qt::TextSingleLine | Qt::AlignVCenter, tr(name));
-      if(bold)
-        painter.setFont(font);
-    }
-    if(value)
-      painter.drawText(paintRectField0, (rightAlign ? Qt::AlignRight : Qt::AlignLeft) | Qt::TextSingleLine | Qt::AlignVCenter, tr(value));
+    if(bold)
+      painter.setFont(boldFont);
+    painter.drawText(paintRectField0, Qt::TextSingleLine | Qt::AlignVCenter, name.c_str());
+    if(bold)
+      painter.setFont(font);
+
+    painter.drawText(paintRectField0, (rightAlign ? Qt::AlignRight : Qt::AlignLeft) | Qt::TextSingleLine | Qt::AlignVCenter, value.c_str());
     paintRectField0.moveTop(paintRectField0.top() + lineSpacing);
   }
 
   void newBlock()
   {
-    fillBackground = fillBackground ? false : true;
+    fillBackground = !fillBackground;
   }
 
   void newSection()
@@ -182,7 +170,7 @@ private:
     }
   }
 
-  QSize sizeHint () const { return QSize(200, 500); }
+  QSize sizeHint() const { return QSize(200, 500); }
 };
 
 class CABSLBehaviorScrollingWidget : public QScrollArea, public SimRobot::Widget
@@ -200,12 +188,13 @@ public:
 
 private:
   CABSLBehaviorWidget* cabslBehaviorWidget;
-  virtual QWidget* getWidget() {return this;}
-  virtual void update() {cabslBehaviorWidget->update();}
+  QWidget* getWidget() override { return this; }
+  void update() override { cabslBehaviorWidget->update(); }
 };
 
-CABSLBehaviorView::CABSLBehaviorView(const QString& fullName, RobotConsole& console, const ActivationGraph& activationGraph, const unsigned& timeStamp) :
-  fullName(fullName), icon(":/Icons/tag_green.png"), console(console), activationGraph(activationGraph), timeStamp(timeStamp) {}
+CABSLBehaviorView::CABSLBehaviorView(const QString& fullName, RobotConsole& console, const ActivationGraph& activationGraph, const unsigned& timestamp) :
+  fullName(fullName), icon(":/Icons/tag_green.png"), console(console), activationGraph(activationGraph), timestamp(timestamp)
+{}
 
 SimRobot::Widget* CABSLBehaviorView::createWidget()
 {

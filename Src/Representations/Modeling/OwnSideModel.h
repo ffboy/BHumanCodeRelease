@@ -3,7 +3,7 @@
  * The file implements a model that states that the robot cannot have left its own
  * side since the last kick-off and how far it can have gotten along the field.
  *
- * @author <A href="mailto:Thomas.Roefer@dfki.de">Thomas Röfer</A>
+ * @author Thomas Röfer
  */
 
 #pragma once
@@ -22,4 +22,5 @@ STREAMABLE(OwnSideModel,
   (float)(100000.f) largestXPossible, /**< The largest x-coordinate that is currently possible. */
   (bool)(false) returnFromGameControllerPenalty, /**< The robot was unpenalized by the GameController and believes it. */
   (bool)(false) returnFromManualPenalty, /**< The robot was unpenalized by the GameController and believes it. */
+  (bool)(false) manuallyPlaced, /**< The robot has been set to its kickoff position during SET by the referee */
 });

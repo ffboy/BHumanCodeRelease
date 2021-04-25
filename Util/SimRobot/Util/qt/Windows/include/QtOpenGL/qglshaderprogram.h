@@ -1,7 +1,7 @@
 /****************************************************************************
 **
-** Copyright (C) 2015 The Qt Company Ltd.
-** Contact: http://www.qt.io/licensing/
+** Copyright (C) 2016 The Qt Company Ltd.
+** Contact: https://www.qt.io/licensing/
 **
 ** This file is part of the QtOpenGL module of the Qt Toolkit.
 **
@@ -11,29 +11,27 @@
 ** accordance with the commercial license agreement provided with the
 ** Software or, alternatively, in accordance with the terms contained in
 ** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see http://www.qt.io/terms-conditions. For further
-** information use the contact form at http://www.qt.io/contact-us.
+** and conditions see https://www.qt.io/terms-conditions. For further
+** information use the contact form at https://www.qt.io/contact-us.
 **
 ** GNU Lesser General Public License Usage
 ** Alternatively, this file may be used under the terms of the GNU Lesser
-** General Public License version 2.1 or version 3 as published by the Free
-** Software Foundation and appearing in the file LICENSE.LGPLv21 and
-** LICENSE.LGPLv3 included in the packaging of this file. Please review the
-** following information to ensure the GNU Lesser General Public License
-** requirements will be met: https://www.gnu.org/licenses/lgpl.html and
-** http://www.gnu.org/licenses/old-licenses/lgpl-2.1.html.
-**
-** As a special exception, The Qt Company gives you certain additional
-** rights. These rights are described in The Qt Company LGPL Exception
-** version 1.1, included in the file LGPL_EXCEPTION.txt in this package.
+** General Public License version 3 as published by the Free Software
+** Foundation and appearing in the file LICENSE.LGPL3 included in the
+** packaging of this file. Please review the following information to
+** ensure the GNU Lesser General Public License version 3 requirements
+** will be met: https://www.gnu.org/licenses/lgpl-3.0.html.
 **
 ** GNU General Public License Usage
 ** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 3.0 as published by the Free Software
-** Foundation and appearing in the file LICENSE.GPL included in the
-** packaging of this file.  Please review the following information to
-** ensure the GNU General Public License version 3.0 requirements will be
-** met: http://www.gnu.org/copyleft/gpl.html.
+** General Public License version 2.0 or (at your option) the GNU General
+** Public license version 3 or any later version approved by the KDE Free
+** Qt Foundation. The licenses are as published by the Free Software
+** Foundation and appearing in the file LICENSE.GPL2 and LICENSE.GPL3
+** included in the packaging of this file. Please review the following
+** information to ensure the GNU General Public License requirements will
+** be met: https://www.gnu.org/licenses/gpl-2.0.html and
+** https://www.gnu.org/licenses/gpl-3.0.html.
 **
 ** $QT_END_LICENSE$
 **
@@ -48,13 +46,8 @@
 #include <QtGui/qvector4d.h>
 #include <QtGui/qmatrix4x4.h>
 
-QT_BEGIN_HEADER
-
 QT_BEGIN_NAMESPACE
 
-QT_MODULE(OpenGL)
-
-#if !defined(QT_OPENGL_ES_1)
 
 class QGLShaderProgram;
 class QGLShaderPrivate;
@@ -71,8 +64,8 @@ public:
     };
     Q_DECLARE_FLAGS(ShaderType, ShaderTypeBit)
 
-    explicit QGLShader(QGLShader::ShaderType type, QObject *parent = 0);
-    QGLShader(QGLShader::ShaderType type, const QGLContext *context, QObject *parent = 0);
+    explicit QGLShader(QGLShader::ShaderType type, QObject *parent = Q_NULLPTR);
+    QGLShader(QGLShader::ShaderType type, const QGLContext *context, QObject *parent = Q_NULLPTR);
     virtual ~QGLShader();
 
     QGLShader::ShaderType shaderType() const;
@@ -89,7 +82,7 @@ public:
 
     GLuint shaderId() const;
 
-    static bool hasOpenGLShaders(ShaderType type, const QGLContext *context = 0);
+    static bool hasOpenGLShaders(ShaderType type, const QGLContext *context = Q_NULLPTR);
 
 private:
     friend class QGLShaderProgram;
@@ -103,20 +96,12 @@ Q_DECLARE_OPERATORS_FOR_FLAGS(QGLShader::ShaderType)
 
 class QGLShaderProgramPrivate;
 
-#ifndef GL_EXT_geometry_shader4
-#  define GL_LINES_ADJACENCY_EXT 0xA
-#  define GL_LINE_STRIP_ADJACENCY_EXT 0xB
-#  define GL_TRIANGLES_ADJACENCY_EXT 0xC
-#  define GL_TRIANGLE_STRIP_ADJACENCY_EXT 0xD
-#endif
-
-
 class Q_OPENGL_EXPORT QGLShaderProgram : public QObject
 {
     Q_OBJECT
 public:
-    explicit QGLShaderProgram(QObject *parent = 0);
-    explicit QGLShaderProgram(const QGLContext *context, QObject *parent = 0);
+    explicit QGLShaderProgram(QObject *parent = Q_NULLPTR);
+    explicit QGLShaderProgram(const QGLContext *context, QObject *parent = Q_NULLPTR);
     virtual ~QGLShaderProgram();
 
     bool addShader(QGLShader *shader);
@@ -204,17 +189,6 @@ public:
     void setAttributeBuffer
         (const char *name, GLenum type, int offset, int tupleSize, int stride = 0);
 
-#ifdef Q_MAC_COMPAT_GL_FUNCTIONS
-    void setAttributeArray
-        (int location, QMacCompatGLenum type, const void *values, int tupleSize, int stride = 0);
-    void setAttributeArray
-        (const char *name, QMacCompatGLenum type, const void *values, int tupleSize, int stride = 0);
-    void setAttributeBuffer
-        (int location, QMacCompatGLenum type, int offset, int tupleSize, int stride = 0);
-    void setAttributeBuffer
-        (const char *name, QMacCompatGLenum type, int offset, int tupleSize, int stride = 0);
-#endif
-
     void enableAttributeArray(int location);
     void enableAttributeArray(const char *name);
     void disableAttributeArray(int location);
@@ -223,17 +197,6 @@ public:
     int uniformLocation(const char *name) const;
     int uniformLocation(const QByteArray& name) const;
     int uniformLocation(const QString& name) const;
-
-#ifdef Q_MAC_COMPAT_GL_FUNCTIONS
-    void setUniformValue(int location, QMacCompatGLint value);
-    void setUniformValue(int location, QMacCompatGLuint value);
-    void setUniformValue(const char *name, QMacCompatGLint value);
-    void setUniformValue(const char *name, QMacCompatGLuint value);
-    void setUniformValueArray(int location, const QMacCompatGLint *values, int count);
-    void setUniformValueArray(int location, const QMacCompatGLuint *values, int count);
-    void setUniformValueArray(const char *name, const QMacCompatGLint *values, int count);
-    void setUniformValueArray(const char *name, const QMacCompatGLuint *values, int count);
-#endif
 
     void setUniformValue(int location, GLfloat value);
     void setUniformValue(int location, GLint value);
@@ -323,7 +286,7 @@ public:
     void setUniformValueArray(const char *name, const QMatrix4x3 *values, int count);
     void setUniformValueArray(const char *name, const QMatrix4x4 *values, int count);
 
-    static bool hasOpenGLShaderPrograms(const QGLContext *context = 0);
+    static bool hasOpenGLShaderPrograms(const QGLContext *context = Q_NULLPTR);
 
 private Q_SLOTS:
     void shaderDestroyed();
@@ -335,10 +298,6 @@ private:
     bool init();
 };
 
-#endif
-
 QT_END_NAMESPACE
-
-QT_END_HEADER
 
 #endif

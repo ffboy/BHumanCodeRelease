@@ -6,12 +6,10 @@
 #define EIGEN_MATRIXBASE_PLUGIN "Tools/Math/EigenMatrixBaseExtensions.h"
 #define EIGEN_ARRAY_PLUGIN "Tools/Math/EigenArrayExtensions.h"
 
-#ifdef WINDOWS
-#define WARN_UNUSED_RESULT
-#else
-#define WARN_UNUSED_RESULT __attribute__ ((warn_unused_result))
+#ifndef M_PI
+#define M_PI 3.14159265358979323846
 #endif
-
+#include <Eigen/StdVector>
 #include <Eigen/Dense>
 #include "Tools/Streams/Eigen.h"
 
@@ -20,7 +18,7 @@ class Angle;
 using Array2a = Eigen::Array<Angle, 2, 1>;
 using Array2d = Eigen::Array2d;
 using Array2f = Eigen::Array2f;
-using Array3f = Eigen::Array2f;
+using Array3f = Eigen::Array3f;
 
 using Vector2a = Eigen::Matrix<Angle, 2, 1>;
 using Vector2d = Eigen::Vector2d;
@@ -69,6 +67,7 @@ using Matrix4x3d = Eigen::Matrix<double, 4, 3>;
 using Matrix4x3f = Eigen::Matrix<float, 4, 3>;
 using Matrix2xXd = Eigen::Matrix<double, 2, Eigen::Dynamic>;
 using Matrix2xXf = Eigen::Matrix<float, 2, Eigen::Dynamic>;
+using Matrix5f = Eigen::Matrix<float, 5, 5>;
 using Matrix6d = Eigen::Matrix<double, 6, 6>;
 using Matrix6f = Eigen::Matrix<float, 6, 6>;
 using Matrix6x2f = Eigen::Matrix<float, 6, 2>;

@@ -24,7 +24,7 @@ Vector3f RotationMatrix::getPackedAngleAxis() const
 
 Vector3f RotationMatrix::getPackedAngleAxisFaulty() const
 {
-  // This function suffers from a wrong handling of +-180° +- 1° rotations.
+  // This function suffers from a wrong handling of +-180Â° +- 1Â° rotations.
   // Additionally normalizing the result vector by (2.f * std::sin(angle)) is imprecise.
   // Unfortunately, the KickEngine kicks are tuned with this function.
 
@@ -160,7 +160,13 @@ RotationMatrix RotationMatrix::fromEulerAngles(const float x, const float y, con
   return Rotation::Euler::fromAngles(x, y, z);
 }
 
-RotationMatrix RotationMatrix::fromEulerAngles(const Vector3f rotation)
+RotationMatrix RotationMatrix::fromEulerAngles(const Vector3f& rotation)
 {
   return Rotation::Euler::fromAngles(rotation);
+}
+
+void RotationMatrix::reg()
+{
+  PUBLISH(reg);
+  REG_CLASS_WITH_BASE(RotationMatrix, Matrix3f);
 }

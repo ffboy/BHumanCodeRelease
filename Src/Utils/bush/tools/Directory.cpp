@@ -1,8 +1,8 @@
 /**
-* \file Directory.cpp
-* Implements a class for accessing directories.
-* \author Colin Graf
-*/
+ * \file Directory.cpp
+ * Implements a class for accessing directories.
+ * \author Colin Graf
+ */
 
 #include <sys/types.h>
 #include <sys/stat.h>
@@ -19,21 +19,17 @@
 #include "Directory.h"
 #include "Platform/BHAssert.h"
 
-Directory::Directory() : dp(0)
-{
-}
-
 Directory::~Directory()
 {
   if(dp)
-    closedir((DIR*)dp);
+    closedir(static_cast<DIR*>(dp));
 }
 
 bool Directory::open(const std::string& pattern)
 {
   if(dp)
   {
-    closedir((DIR*)dp);
+    closedir(static_cast<DIR*>(dp));
     dp = 0;
   }
 
@@ -54,10 +50,10 @@ bool Directory::read(std::string& name, bool& isDir)
 
   for(;;)
   {
-    struct dirent* dent = readdir((DIR*)dp);
+    struct dirent* dent = readdir(static_cast<DIR*>(dp));
     if(!dent)
     {
-      closedir((DIR*)dp);
+      closedir(static_cast<DIR*>(dp));
       dp = 0;
       return false;
     }
@@ -76,5 +72,4 @@ bool Directory::read(std::string& name, bool& isDir)
       return true;
     }
   }
-  return false; // unreachable
 }

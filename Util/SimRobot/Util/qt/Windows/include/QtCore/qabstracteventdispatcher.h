@@ -1,7 +1,7 @@
 /****************************************************************************
 **
-** Copyright (C) 2015 The Qt Company Ltd.
-** Contact: http://www.qt.io/licensing/
+** Copyright (C) 2016 The Qt Company Ltd.
+** Contact: https://www.qt.io/licensing/
 **
 ** This file is part of the QtCore module of the Qt Toolkit.
 **
@@ -11,29 +11,27 @@
 ** accordance with the commercial license agreement provided with the
 ** Software or, alternatively, in accordance with the terms contained in
 ** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see http://www.qt.io/terms-conditions. For further
-** information use the contact form at http://www.qt.io/contact-us.
+** and conditions see https://www.qt.io/terms-conditions. For further
+** information use the contact form at https://www.qt.io/contact-us.
 **
 ** GNU Lesser General Public License Usage
 ** Alternatively, this file may be used under the terms of the GNU Lesser
-** General Public License version 2.1 or version 3 as published by the Free
-** Software Foundation and appearing in the file LICENSE.LGPLv21 and
-** LICENSE.LGPLv3 included in the packaging of this file. Please review the
-** following information to ensure the GNU Lesser General Public License
-** requirements will be met: https://www.gnu.org/licenses/lgpl.html and
-** http://www.gnu.org/licenses/old-licenses/lgpl-2.1.html.
-**
-** As a special exception, The Qt Company gives you certain additional
-** rights. These rights are described in The Qt Company LGPL Exception
-** version 1.1, included in the file LGPL_EXCEPTION.txt in this package.
+** General Public License version 3 as published by the Free Software
+** Foundation and appearing in the file LICENSE.LGPL3 included in the
+** packaging of this file. Please review the following information to
+** ensure the GNU Lesser General Public License version 3 requirements
+** will be met: https://www.gnu.org/licenses/lgpl-3.0.html.
 **
 ** GNU General Public License Usage
 ** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 3.0 as published by the Free Software
-** Foundation and appearing in the file LICENSE.GPL included in the
-** packaging of this file.  Please review the following information to
-** ensure the GNU General Public License version 3.0 requirements will be
-** met: http://www.gnu.org/copyleft/gpl.html.
+** General Public License version 2.0 or (at your option) the GNU General
+** Public license version 3 or any later version approved by the KDE Free
+** Qt Foundation. The licenses are as published by the Free Software
+** Foundation and appearing in the file LICENSE.GPL2 and LICENSE.GPL3
+** included in the packaging of this file. Please review the following
+** information to ensure the GNU General Public License requirements will
+** be met: https://www.gnu.org/licenses/gpl-2.0.html and
+** https://www.gnu.org/licenses/gpl-3.0.html.
 **
 ** $QT_END_LICENSE$
 **
@@ -45,15 +43,15 @@
 #include <QtCore/qobject.h>
 #include <QtCore/qeventloop.h>
 
-QT_BEGIN_HEADER
-
 QT_BEGIN_NAMESPACE
 
-QT_MODULE(Core)
-
+class QAbstractNativeEventFilter;
 class QAbstractEventDispatcherPrivate;
 class QSocketNotifier;
-template <typename T1, typename T2> struct QPair;
+
+#ifdef Q_OS_WIN
+class QWinEventNotifier;
+#endif
 
 class Q_CORE_EXPORT QAbstractEventDispatcher : public QObject
 {
@@ -61,35 +59,61 @@ class Q_CORE_EXPORT QAbstractEventDispatcher : public QObject
     Q_DECLARE_PRIVATE(QAbstractEventDispatcher)
 
 public:
-    typedef QPair<int, int> TimerInfo;
+    struct TimerInfo
+    {
+        int timerId;
+        int interval;
+        Qt::TimerType timerType;
 
-    explicit QAbstractEventDispatcher(QObject *parent = 0);
+        inline TimerInfo(int id, int i, Qt::TimerType t)
+            : timerId(id), interval(i), timerType(t)
+        { }
+    };
+
+    explicit QAbstractEventDispatcher(QObject *parent = Q_NULLPTR);
     ~QAbstractEventDispatcher();
 
-    static QAbstractEventDispatcher *instance(QThread *thread = 0);
+    static QAbstractEventDispatcher *instance(QThread *thread = Q_NULLPTR);
 
     virtual bool processEvents(QEventLoop::ProcessEventsFlags flags) = 0;
-    virtual bool hasPendingEvents() = 0;
+    virtual bool hasPendingEvents() = 0; // ### Qt6: remove, mark final or make protected
 
     virtual void registerSocketNotifier(QSocketNotifier *notifier) = 0;
     virtual void unregisterSocketNotifier(QSocketNotifier *notifier) = 0;
 
-    int registerTimer(int interval, QObject *object);
-    virtual void registerTimer(int timerId, int interval, QObject *object) = 0;
+#if QT_DEPRECATED_SINCE(5,0)
+    QT_DEPRECATED inline int registerTimer(int interval, QObject *object)
+    { return registerTimer(interval, Qt::CoarseTimer, object); }
+    QT_DEPRECATED inline void registerTimer(int timerId, int interval, QObject *object)
+    { registerTimer(timerId, interval, Qt::CoarseTimer, object); }
+#endif
+    int registerTimer(int interval, Qt::TimerType timerType, QObject *object);
+    virtual void registerTimer(int timerId, int interval, Qt::TimerType timerType, QObject *object) = 0;
     virtual bool unregisterTimer(int timerId) = 0;
     virtual bool unregisterTimers(QObject *object) = 0;
     virtual QList<TimerInfo> registeredTimers(QObject *object) const = 0;
 
+    virtual int remainingTime(int timerId) = 0;
+
+#if defined(Q_OS_WIN) || defined(Q_QDOC)
+    virtual bool registerEventNotifier(QWinEventNotifier *notifier) = 0;
+    virtual void unregisterEventNotifier(QWinEventNotifier *notifier) = 0;
+#endif
+
     virtual void wakeUp() = 0;
     virtual void interrupt() = 0;
-    virtual void flush() = 0;
+    virtual void flush() = 0; // ### Qt6: remove, mark final or make protected
 
     virtual void startingUp();
     virtual void closingDown();
 
-    typedef bool(*EventFilter)(void *message);
-    EventFilter setEventFilter(EventFilter filter);
-    bool filterEvent(void *message);
+    void installNativeEventFilter(QAbstractNativeEventFilter *filterObj);
+    void removeNativeEventFilter(QAbstractNativeEventFilter *filterObj);
+    bool filterNativeEvent(const QByteArray &eventType, void *message, long *result);
+#if QT_DEPRECATED_SINCE(5, 0)
+    QT_DEPRECATED bool filterEvent(void *message)
+    { return filterNativeEvent("", message, Q_NULLPTR); }
+#endif
 
 Q_SIGNALS:
     void aboutToBlock();
@@ -101,7 +125,5 @@ protected:
 };
 
 QT_END_NAMESPACE
-
-QT_END_HEADER
 
 #endif // QABSTRACTEVENTDISPATCHER_H

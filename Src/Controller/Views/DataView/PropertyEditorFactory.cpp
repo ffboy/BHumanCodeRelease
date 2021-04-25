@@ -1,4 +1,4 @@
-/*
+/**
  * PropertyEditorFactory.cpp
  *
  *  Created on: Apr 27, 2012
@@ -29,7 +29,7 @@ class IntSpinBox : public QSpinBox
 protected:
   QValidator::State validate(QString& input, int& pos) const
   {
-    for(;;)
+    while(true)
     {
       int index = input.indexOf('.');
       if(index == -1)
@@ -80,7 +80,7 @@ protected:
   }
 
 public:
-  FloatSpinBox(QWidget* parent = 0) : QDoubleSpinBox(parent) {}
+  FloatSpinBox(QWidget* parent = nullptr) : QDoubleSpinBox(parent) {}
 };
 
 QWidget* PropertyEditorFactory::createEditor(QtVariantPropertyManager* pManager, QtProperty* pProperty, QWidget* pParent)
@@ -101,7 +101,7 @@ QWidget* PropertyEditorFactory::createEditor(QtVariantPropertyManager* pManager,
     pBox->setMinimum(0);
     //Maximum can only be int max because the spinbox uses int internally
     pBox->setMaximum(std::numeric_limits<int>::max());
-    pBox->setValue((int)pManager->value(pProperty).value<unsigned int>()); //the cast to int is not very nice :(
+    pBox->setValue(static_cast<int>(pManager->value(pProperty).value<unsigned int>())); //the cast to int is not very nice :(
     pReturnWidget = pBox;
     connect(pBox, SIGNAL(valueChanged(int)), this, SLOT(slotSpinBoxValueChanged(int)));
     connect(pBox, SIGNAL(destroyed(QObject*)), this, SLOT(slotEditorDestroyed(QObject*)));
@@ -128,7 +128,7 @@ QWidget* PropertyEditorFactory::createEditor(QtVariantPropertyManager* pManager,
     spinBoxToProperty[pBox] = pProperty;
     pBox->setMinimum(std::numeric_limits<short>::min());
     pBox->setMaximum(std::numeric_limits<short>::max());
-    pBox->setValue((int)pManager->value(pProperty).value<short>());
+    pBox->setValue(static_cast<int>(pManager->value(pProperty).value<short>()));
     pReturnWidget = pBox;
     connect(pBox, SIGNAL(valueChanged(int)), this, SLOT(slotSpinBoxValueChanged(int)));
     connect(pBox, SIGNAL(destroyed(QObject*)), this, SLOT(slotEditorDestroyed(QObject*)));
@@ -141,7 +141,7 @@ QWidget* PropertyEditorFactory::createEditor(QtVariantPropertyManager* pManager,
     spinBoxToProperty[pBox] = pProperty;
     pBox->setMinimum(std::numeric_limits<unsigned short>::min());
     pBox->setMaximum(std::numeric_limits<unsigned short>::max());
-    pBox->setValue((int)pManager->value(pProperty).value<unsigned short>());
+    pBox->setValue(static_cast<int>(pManager->value(pProperty).value<unsigned short>()));
     pReturnWidget = pBox;
     connect(pBox, SIGNAL(valueChanged(int)), this, SLOT(slotSpinBoxValueChanged(int)));
     connect(pBox, SIGNAL(destroyed(QObject*)), this, SLOT(slotEditorDestroyed(QObject*)));
@@ -154,7 +154,7 @@ QWidget* PropertyEditorFactory::createEditor(QtVariantPropertyManager* pManager,
     spinBoxToProperty[pBox] = pProperty;
     pBox->setMinimum(std::numeric_limits<unsigned char>::min());
     pBox->setMaximum(std::numeric_limits<unsigned char>::max());
-    pBox->setValue((int)pManager->value(pProperty).value<unsigned char>());
+    pBox->setValue(static_cast<int>(pManager->value(pProperty).value<unsigned char>()));
     pReturnWidget = pBox;
     connect(pBox, SIGNAL(valueChanged(int)), this, SLOT(slotSpinBoxValueChanged(int)));
     connect(pBox, SIGNAL(destroyed(QObject*)), this, SLOT(slotEditorDestroyed(QObject*)));
@@ -175,9 +175,7 @@ QWidget* PropertyEditorFactory::createEditor(QtVariantPropertyManager* pManager,
     pReturnWidget = aEdit;
   }
   else
-  {
     pReturnWidget = QtVariantEditorFactory::createEditor(pManager, pProperty, pParent);
-  }
 
   if(nullptr != pReturnWidget)
   {
@@ -328,7 +326,7 @@ AngleEditor::AngleEditor(QWidget* parent) :
   unityBox = new QComboBox();
   layout->addWidget(fBox, 0, 0);
 
-#ifdef OSX
+#ifdef MACOS
   setAttribute(Qt::WA_MacShowFocusRect);
   QWidget* w = new QWidget();
   w->setLayout(new QHBoxLayout);

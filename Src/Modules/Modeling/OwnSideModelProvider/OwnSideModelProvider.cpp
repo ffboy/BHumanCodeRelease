@@ -1,67 +1,73 @@
 /**
- * @file OwnSideModelProvider.h
+ * @file OwnSideModelProvider.cpp
  * The file implements a module that determines whether the robot cannot have left its own
  * side since the last kick-off.
  *
- * @author <a href="mailto:Thomas.Roefer@dfki.de">Thomas Röfer</a>
+ * @author Thomas Röfer
  */
 
 #include "OwnSideModelProvider.h"
 #include "Tools/Settings.h"
 
 OwnSideModelProvider::OwnSideModelProvider() :
-  lastPenalty(PENALTY_NONE),
-  lastGameState(STATE_INITIAL),
   distanceWalkedAtKnownPosition(0),
   largestXPossibleAtKnownPosition(0),
   manuallyPlaced(false),
   timeWhenPenalized(0),
-  gameStateWhenPenalized(STATE_INITIAL)
+  timeWhenPenaltyEnded(0),
+  receivedGameControllerPacket(false)
 {}
 
 void OwnSideModelProvider::update(OwnSideModel& ownSideModel)
 {
-  if(theGameInfo.state == STATE_SET && !theGroundContactState.contact)
+  if(theCognitionStateChanges.lastPenalty != PENALTY_NONE && theRobotInfo.penalty == PENALTY_NONE)
+    timeWhenPenaltyEnded = theFrameInfo.time;
+  if(theGameInfo.gamePhase != GAME_PHASE_PENALTYSHOOT && theGameInfo.state == STATE_SET && theRobotInfo.penalty == PENALTY_NONE &&
+     theFrameInfo.getTimeSince(timeWhenPenaltyEnded) > 5000 && theFallDownState.state == FallDownState::pickedUp)
     manuallyPlaced = true;
 
-  if(lastPenalty == PENALTY_NONE && theRobotInfo.penalty != PENALTY_NONE)
+  if(theCognitionStateChanges.lastPenalty == PENALTY_NONE && theRobotInfo.penalty != PENALTY_NONE)
   {
-    timeWhenPenalized = theFrameInfo.time;
-    gameStateWhenPenalized = theGameInfo.state;
+    // If this is the first GameController packet, it might be that the software
+    // just started and the robot is actually penalized for a longer time.
+    if(!receivedGameControllerPacket && theRobotInfo.penalty != PENALTY_MANUAL)
+      timeWhenPenalized = 0;
+    else
+      timeWhenPenalized = theFrameInfo.time;
   }
+  receivedGameControllerPacket = theFrameInfo.getTimeSince(theGameInfo.timeLastPacketReceived) < 45000 - minPenaltyTime;
 
   ownSideModel.returnFromGameControllerPenalty = false;
   ownSideModel.returnFromManualPenalty = false;
 
-  if(theGameInfo.secondaryState != STATE2_PENALTYSHOOT)
+  if(theGameInfo.gamePhase != GAME_PHASE_PENALTYSHOOT)
   {
-    if(lastGameState == STATE_INITIAL && theGameInfo.state != STATE_INITIAL)
+    if(theCognitionStateChanges.lastGameState == STATE_INITIAL && theGameInfo.state == STATE_READY)
     {
       distanceWalkedAtKnownPosition = theOdometer.distanceWalked;
       largestXPossibleAtKnownPosition = largestXInInitial;
     }
-    else if(lastPenalty == PENALTY_MANUAL && theRobotInfo.penalty == PENALTY_NONE)
+    else if(theCognitionStateChanges.lastPenalty == PENALTY_MANUAL && theRobotInfo.penalty == PENALTY_NONE)
     {
-      distanceWalkedAtKnownPosition = theOdometer.distanceWalked;
       largestXPossibleAtKnownPosition = -theFieldDimensions.centerCircleRadius - awayFromLineDistance;
+      distanceWalkedAtKnownPosition = theOdometer.distanceWalked;
       ownSideModel.returnFromManualPenalty = true;
     }
-    else if(lastPenalty != PENALTY_NONE && lastPenalty != PENALTY_SPL_ILLEGAL_MOTION_IN_SET &&
-            theRobotInfo.penalty == PENALTY_NONE &&
-            (theFrameInfo.getTimeSince(timeWhenPenalized) > minPenaltyTime || theGameInfo.state != gameStateWhenPenalized))
+    else if(theCognitionStateChanges.lastPenalty != PENALTY_NONE && theCognitionStateChanges.lastPenalty != PENALTY_SPL_ILLEGAL_MOTION_IN_SET &&
+            theRobotInfo.penalty == PENALTY_NONE && theFrameInfo.getTimeSince(timeWhenPenalized) > (theCognitionStateChanges.lastPenalty == PENALTY_SPL_ILLEGAL_POSITIONING ? minPenaltyTimeIP : minPenaltyTime))
     {
       distanceWalkedAtKnownPosition = theOdometer.distanceWalked;
-      largestXPossibleAtKnownPosition = theFieldDimensions.xPosOwnPenaltyMark;
+      largestXPossibleAtKnownPosition = theFieldDimensions.xPosOwnPenaltyMark + 700;
       ownSideModel.returnFromGameControllerPenalty = true;
     }
-    else if(lastGameState == STATE_SET && theGameInfo.state == STATE_PLAYING)
+    else if(theCognitionStateChanges.lastGameState == STATE_SET && theGameInfo.state == STATE_PLAYING)
     {
       distanceWalkedAtKnownPosition = theOdometer.distanceWalked;
       if(manuallyPlaced)
       {
-        if(Global::getSettings().isGoalkeeper)
+        if(theTeamBehaviorStatus.role.isGoalkeeper)
           largestXPossibleAtKnownPosition = theFieldDimensions.xPosOwnGroundline;
-        else if(theGameInfo.kickOffTeam == theOwnTeamInfo.teamNumber)
+        else if(theGameInfo.kickingTeam == theOwnTeamInfo.teamNumber)
           largestXPossibleAtKnownPosition = -theFieldDimensions.centerCircleRadius - awayFromLineDistance;
         else
           largestXPossibleAtKnownPosition = theFieldDimensions.xPosOwnPenaltyArea + awayFromLineDistance;
@@ -70,22 +76,27 @@ void OwnSideModelProvider::update(OwnSideModel& ownSideModel)
         largestXPossibleAtKnownPosition = -awayFromLineDistance;
     }
   }
-  else if(lastGameState == STATE_SET)
+  else if(theCognitionStateChanges.lastGameState == STATE_SET)
   {
     distanceWalkedAtKnownPosition = theOdometer.distanceWalked;
-    if(theGameInfo.kickOffTeam == theOwnTeamInfo.teamNumber)
+    if(theGameInfo.kickingTeam == theOwnTeamInfo.teamNumber)
       largestXPossibleAtKnownPosition = theFieldDimensions.xPosPenaltyStrikerStartPosition;
     else
       largestXPossibleAtKnownPosition = theFieldDimensions.xPosOwnGroundline;
   }
+
+  if(theStaticInitialPose.isActive && theRobotInfo.penalty == PENALTY_NONE
+     && (theCognitionStateChanges.lastPenalty == PENALTY_SPL_PLAYER_PUSHING || theCognitionStateChanges.lastPenalty == PENALTY_MANUAL))
+    largestXPossibleAtKnownPosition = theStaticInitialPose.staticPoseOnField.translation.x();
+
   ownSideModel.largestXPossible = largestXPossibleAtKnownPosition + distanceUncertaintyOffset +
                                   (theOdometer.distanceWalked - distanceWalkedAtKnownPosition) * distanceUncertaintyFactor;
   ownSideModel.stillInOwnSide = ownSideModel.largestXPossible < 0;
-  lastPenalty = theRobotInfo.penalty;
-  lastGameState = theGameInfo.state;
 
   if(theGameInfo.state != STATE_SET)
     manuallyPlaced = false;
+
+  ownSideModel.manuallyPlaced = manuallyPlaced;
 }
 
 MAKE_MODULE(OwnSideModelProvider, modeling)

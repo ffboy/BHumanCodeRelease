@@ -1,6 +1,6 @@
 /**
  * The file declares a class that represents the blackboard containing all
- * representations used in a process.
+ * representations used in a thread.
  * The file will be included by all modules and therefore avoids including
  * headers by itself.
  * @author Thomas Röfer
@@ -8,7 +8,19 @@
 
 #pragma once
 
+#include <memory>
+#include <functional>
+
 class Streamable;
+
+/**
+ * Helper class to check whether a type has an accessible serialize method.
+ */
+struct HasSerialize
+{
+  template<typename T> static auto test(T* t) -> decltype(t->serialize(nullptr, nullptr), bool()) {return true;}
+  static bool test(void*) {return false;}
+};
 
 class Blackboard
 {
@@ -16,26 +28,27 @@ private:
   /** A single entry of the blackboard. */
   struct Entry
   {
-    Streamable* data = nullptr; /**< The representation. */
-    int counter = 0; /**< How many modules requested its existance? */
+    std::unique_ptr<Streamable> data; /**< The representation. */
+    int counter = 0; /**< How many modules requested its existence? */
+    std::function<void(Streamable*)> reset;
   };
 
   class Entries; /**< Type of the map for all entries. */
-  Entries& entries; /**< All entries of the blackboard. */
+  std::unique_ptr<Entries> entries; /**< All entries of the blackboard. */
   int version = 0; /**< A version that is increased with each configuration change. */
 
   /**
-   * Set the blackboard instance of a process.
-   * Only Process::setGlobals calls this method.
-   * @param instance The blackboard of this process.
+   * Set the blackboard instance of a thread.
+   * Only Thread::setGlobals calls this method.
+   * @param instance The blackboard of this thread.
    */
   static void setInstance(Blackboard& instance);
-  friend class Process;
+  friend class ThreadFrame; /**< A thread is allowed to set the instance. */
 
   /**
    * Retrieve the blackboard entry for the name of a representation.
    * @param representation The name of the representation.
-   * @return The blackboard entry. If it does not exist, the it will
+   * @return The blackboard entry. If it does not exist, it will
    * be created, but not the representation.
    */
   Entry& get(const char* representation);
@@ -44,13 +57,13 @@ private:
 public:
   /**
    * The default constructor creates the blackboard and sets it as
-   * the instance of this process.
+   * the instance of this thread.
    */
   Blackboard();
 
   /**
    * The destructor frees the blackboard and resets the instance of
-   * this process.
+   * this thread.
    */
   ~Blackboard();
 
@@ -74,10 +87,18 @@ public:
     Entry& entry = get(representation);
     if(entry.counter++ == 0)
     {
-      entry.data = new T;
+      entry.data = std::make_unique<T>();
+      if(HasSerialize::test(dynamic_cast<T*>(&*entry.data)))
+        entry.reset = [](Streamable* data)
+      {
+        dynamic_cast<T*>(data)->~T();
+        new(dynamic_cast<T*>(data)) T();
+      };
+      else
+        entry.reset = [](Streamable* data) {};
       ++version;
     }
-    return *dynamic_cast<T*>(entry.data);
+    return dynamic_cast<T&>(*entry.data);
   }
 
   /**
@@ -87,6 +108,13 @@ public:
    * @param representation The name of the representation.
    */
   void free(const char* representation);
+
+  /**
+   * Reset the blackboard entry for a representation of a certain
+   * name to its default state.
+   * @param representation The name of the representation.
+   */
+  void reset(const char* representation);
 
   /**
    * Access a representation of a certain name. The representation
@@ -107,8 +135,8 @@ public:
   int getVersion() const {return version;}
 
   /**
-   * Access the blackboard of this process.
-   * @return The instance that belongs to this process.
+   * Access the blackboard of this thread.
+   * @return The instance that belongs to this thread.
    */
   static Blackboard& getInstance();
 };

@@ -1,22 +1,20 @@
 /**
-* @file History.h
-* @author <A href="mailto:andisto@tzi.de">Andreas Stolpmann</A>
-*/
+ * @file History.h
+ * @author Andreas Stolpmann
+ */
 
 #include <vector>
 #include "Platform/BHAssert.h"
 
-template <typename T>
+template<typename T>
 class History
 {
 private:
   std::vector<T> history;
-  size_t current, last;
+  size_t current = 0;
+  size_t last = 0;
 
 public:
-  History() : current(0), last(0)
-  {}
-
   void add(const T& t, const bool ignoreIfEqualToLast = true)
   {
     if(ignoreIfEqualToLast && current > 0 && history[current - 1] == t)

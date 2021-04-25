@@ -1,23 +1,16 @@
 /**
-* @file Controller/Representations/TimeInfo.cpp
-*
-* Implementation of class TimeInfo
-*
-* @author <a href="mailto:Thomas.Roefer@dfki.de">Thomas Röfer</a>
-*/
+ * @file Controller/Representations/TimeInfo.cpp
+ *
+ * Implementation of class TimeInfo
+ *
+ * @author Thomas Röfer
+ */
 
 #include "TimeInfo.h"
 #include "Tools/MessageQueue/InMessage.h"
-#include "Platform/SystemCall.h"
+#include "Platform/Time.h"
 #include "Platform/BHAssert.h"
 #include <iostream>
-
-using namespace std;
-
-TimeInfo::TimeInfo(const std::string& name) : processName(name)
-{
-  reset();
-}
 
 void TimeInfo::reset()
 {
@@ -26,22 +19,23 @@ void TimeInfo::reset()
   lastStartTime = 0;
 }
 
-bool TimeInfo::handleMessage(InMessage& message)
+bool TimeInfo::handleMessage(InMessage& message, bool justReadNames)
 {
   if(message.getMessageID() == idStopwatch)
   {
-    timeStamp = SystemCall::getCurrentSystemTime();
+    timestamp = Time::getCurrentSystemTime();
     //first get the names of some of the stopwatches (usually we get 3 names per frame)
     unsigned short nameCount;
     message.bin >> nameCount;
 
     for(int i = 0; i < nameCount; ++i)
     {
-      string watchName;
+      std::string watchName;
       unsigned short watchId;
       message.bin >> watchId;
       message.bin >> watchName;
-      if(names.find(watchId) == names.end()) //new name
+      auto j = names.find(watchId);
+      if(j == names.end() || j->second != watchName) //new or different name
       {
         names[watchId] = watchName;
         infos[watchId] = Info();
@@ -58,24 +52,30 @@ bool TimeInfo::handleMessage(InMessage& message)
       unsigned time;
       message.bin >> watchId;
       message.bin >> time;
-      infos[watchId].push_front(static_cast<float>(time));
+      if(!justReadNames)
+        infos[watchId].push_front(static_cast<float>(time));
+      infos[watchId].timestamp = Time::getCurrentSystemTime();
     }
-    unsigned processStartTime;
-    message.bin >> processStartTime;
+
+    if(justReadNames)
+      return true;
+
+    unsigned threadStartTime;
+    message.bin >> threadStartTime;
     unsigned frameNo;
     message.bin >> frameNo;
 
     int diff = frameNo - lastFrameNo;
     //sometimes we do not get data every frame. Compensate by assuming that the missing frames have
     // the same timing as the last one
-    if(lastFrameNo && diff < static_cast<int>(processDeltas.capacity()))
+    if(lastFrameNo && diff < static_cast<int>(threadDeltas.capacity()))
+    {
       for(int i = 0; i < diff; ++i)
-      {
-        processDeltas.push_front(static_cast<float>(processStartTime - lastStartTime) / static_cast<float>(diff));
-      }
+        threadDeltas.push_front(static_cast<float>(threadStartTime - lastStartTime) / static_cast<float>(diff));
+    }
 
     lastFrameNo = frameNo;
-    lastStartTime = processStartTime;
+    lastStartTime = threadStartTime;
     return true;
   }
   else
@@ -89,19 +89,17 @@ void TimeInfo::getStatistics(const Info& info, float& minTime, float& maxTime, f
   maxTime = info.maximum() / 1000.0f;
 }
 
-void TimeInfo::getProcessStatistics(float& outAvgFreq) const
+void TimeInfo::getThreadStatistics(float& outAvgFreq, float& outMin, float& outMax) const
 {
-  outAvgFreq = processDeltas.sum() != 0.f ? 1000.0f / processDeltas.average() : 0.f;
+  outAvgFreq = threadDeltas.sum() != 0.f ? 1000.0f / threadDeltas.average() : 0.f;
+  outMin = threadDeltas.minimum();
+  outMax = threadDeltas.maximum();
 }
 
 std::string TimeInfo::getName(unsigned short watchId) const
 {
   if(names.find(watchId) == names.end())
-  {
     return "unknown";
-  }
   else
-  {
     return names.at(watchId);
-  }
 }

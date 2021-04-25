@@ -1,7 +1,7 @@
 /****************************************************************************
 **
-** Copyright (C) 2015 The Qt Company Ltd.
-** Contact: http://www.qt.io/licensing/
+** Copyright (C) 2016 The Qt Company Ltd.
+** Contact: https://www.qt.io/licensing/
 **
 ** This file is part of the QtGui module of the Qt Toolkit.
 **
@@ -11,29 +11,27 @@
 ** accordance with the commercial license agreement provided with the
 ** Software or, alternatively, in accordance with the terms contained in
 ** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see http://www.qt.io/terms-conditions. For further
-** information use the contact form at http://www.qt.io/contact-us.
+** and conditions see https://www.qt.io/terms-conditions. For further
+** information use the contact form at https://www.qt.io/contact-us.
 **
 ** GNU Lesser General Public License Usage
 ** Alternatively, this file may be used under the terms of the GNU Lesser
-** General Public License version 2.1 or version 3 as published by the Free
-** Software Foundation and appearing in the file LICENSE.LGPLv21 and
-** LICENSE.LGPLv3 included in the packaging of this file. Please review the
-** following information to ensure the GNU Lesser General Public License
-** requirements will be met: https://www.gnu.org/licenses/lgpl.html and
-** http://www.gnu.org/licenses/old-licenses/lgpl-2.1.html.
-**
-** As a special exception, The Qt Company gives you certain additional
-** rights. These rights are described in The Qt Company LGPL Exception
-** version 1.1, included in the file LGPL_EXCEPTION.txt in this package.
+** General Public License version 3 as published by the Free Software
+** Foundation and appearing in the file LICENSE.LGPL3 included in the
+** packaging of this file. Please review the following information to
+** ensure the GNU Lesser General Public License version 3 requirements
+** will be met: https://www.gnu.org/licenses/lgpl-3.0.html.
 **
 ** GNU General Public License Usage
 ** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 3.0 as published by the Free Software
-** Foundation and appearing in the file LICENSE.GPL included in the
-** packaging of this file.  Please review the following information to
-** ensure the GNU General Public License version 3.0 requirements will be
-** met: http://www.gnu.org/copyleft/gpl.html.
+** General Public License version 2.0 or (at your option) the GNU General
+** Public license version 3 or any later version approved by the KDE Free
+** Qt Foundation. The licenses are as published by the Free Software
+** Foundation and appearing in the file LICENSE.GPL2 and LICENSE.GPL3
+** included in the packaging of this file. Please review the following
+** information to ensure the GNU General Public License requirements will
+** be met: https://www.gnu.org/licenses/gpl-2.0.html and
+** https://www.gnu.org/licenses/gpl-3.0.html.
 **
 ** $QT_END_LICENSE$
 **
@@ -42,6 +40,7 @@
 #ifndef QMATRIX_H
 #define QMATRIX_H
 
+#include <QtGui/qtguiglobal.h>
 #include <QtGui/qpolygon.h>
 #include <QtGui/qregion.h>
 #include <QtGui/qwindowdefs.h>
@@ -49,11 +48,8 @@
 #include <QtCore/qpoint.h>
 #include <QtCore/qrect.h>
 
-QT_BEGIN_HEADER
-
 QT_BEGIN_NAMESPACE
 
-QT_MODULE(Gui)
 
 class QPainterPath;
 class QVariant;
@@ -65,7 +61,16 @@ public:
     QMatrix();
     QMatrix(qreal m11, qreal m12, qreal m21, qreal m22,
             qreal dx, qreal dy);
-    QMatrix(const QMatrix &matrix);
+
+#if QT_VERSION < QT_VERSION_CHECK(6, 0, 0)
+    // ### Qt 6: remove; the compiler-generated ones are fine!
+    QMatrix &operator=(QMatrix &&other) Q_DECL_NOTHROW // = default
+    { memcpy(this, &other, sizeof(QMatrix)); return *this; }
+    QMatrix &operator=(const QMatrix &) Q_DECL_NOTHROW; // = default
+    QMatrix(QMatrix &&other) Q_DECL_NOTHROW // = default
+    { memcpy(this, &other, sizeof(QMatrix)); }
+    QMatrix(const QMatrix &other) Q_DECL_NOTHROW; // = default
+#endif
 
     void setMatrix(qreal m11, qreal m12, qreal m21, qreal m22,
                    qreal dx, qreal dy);
@@ -102,11 +107,8 @@ public:
 
     bool isInvertible() const { return !qFuzzyIsNull(_m11*_m22 - _m12*_m21); }
     qreal determinant() const { return _m11*_m22 - _m12*_m21; }
-#ifdef QT_DEPRECATED
-    QT_DEPRECATED qreal det() const { return _m11*_m22 - _m12*_m21; }
-#endif
 
-    QMatrix inverted(bool *invertible = 0) const;
+    Q_REQUIRED_RESULT QMatrix inverted(bool *invertible = Q_NULLPTR) const;
 
     bool operator==(const QMatrix &) const;
     bool operator!=(const QMatrix &) const;
@@ -114,15 +116,7 @@ public:
     QMatrix &operator*=(const QMatrix &);
     QMatrix operator*(const QMatrix &o) const;
 
-    QMatrix &operator=(const QMatrix &);
-
     operator QVariant() const;
-
-#ifdef QT3_SUPPORT
-    inline QT3_SUPPORT QMatrix invert(bool *invertible=0) const { return inverted(invertible); }
-    inline QT3_SUPPORT QRect map(const QRect &r) const { return mapRect(r); }
-    QT3_SUPPORT QRegion mapToRegion(const QRect &r) const;
-#endif
 
 private:
     inline QMatrix(bool)
@@ -146,20 +140,22 @@ private:
 };
 Q_DECLARE_TYPEINFO(QMatrix, Q_MOVABLE_TYPE);
 
+Q_GUI_EXPORT Q_DECL_CONST_FUNCTION uint qHash(const QMatrix &key, uint seed = 0) Q_DECL_NOTHROW;
+
 // mathematical semantics
-Q_GUI_EXPORT_INLINE QPoint operator*(const QPoint &p, const QMatrix &m)
+inline QPoint operator*(const QPoint &p, const QMatrix &m)
 { return m.map(p); }
-Q_GUI_EXPORT_INLINE QPointF operator*(const QPointF &p, const QMatrix &m)
+inline QPointF operator*(const QPointF &p, const QMatrix &m)
 { return m.map(p); }
-Q_GUI_EXPORT_INLINE QLineF operator*(const QLineF &l, const QMatrix &m)
+inline QLineF operator*(const QLineF &l, const QMatrix &m)
 { return m.map(l); }
-Q_GUI_EXPORT_INLINE QLine operator*(const QLine &l, const QMatrix &m)
+inline QLine operator*(const QLine &l, const QMatrix &m)
 { return m.map(l); }
-Q_GUI_EXPORT_INLINE QPolygon operator *(const QPolygon &a, const QMatrix &m)
+inline QPolygon operator *(const QPolygon &a, const QMatrix &m)
 { return m.map(a); }
-Q_GUI_EXPORT_INLINE QPolygonF operator *(const QPolygonF &a, const QMatrix &m)
+inline QPolygonF operator *(const QPolygonF &a, const QMatrix &m)
 { return m.map(a); }
-Q_GUI_EXPORT_INLINE QRegion operator *(const QRegion &r, const QMatrix &m)
+inline QRegion operator *(const QRegion &r, const QMatrix &m)
 { return m.map(r); }
 Q_GUI_EXPORT QPainterPath operator *(const QPainterPath &p, const QMatrix &m);
 
@@ -193,14 +189,6 @@ Q_GUI_EXPORT QDataStream &operator>>(QDataStream &, QMatrix &);
 Q_GUI_EXPORT QDebug operator<<(QDebug, const QMatrix &);
 #endif
 
-#ifdef QT3_SUPPORT
-QT_BEGIN_INCLUDE_NAMESPACE
-#include <QtGui/qwmatrix.h>
-QT_END_INCLUDE_NAMESPACE
-#endif
-
 QT_END_NAMESPACE
-
-QT_END_HEADER
 
 #endif // QMATRIX_H

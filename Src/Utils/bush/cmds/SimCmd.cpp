@@ -26,8 +26,8 @@ std::string SimCmd::getDescription() const
 bool SimCmd::execute(Context& context, const std::vector<std::string>& params)
 {
   const std::string buildConfig = "Develop";
-  const std::string simulatorExecutable = "\"" + getSimulatorExecutable(buildConfig) + "\"";
-  const std::string remoteRobotScene = "\"" + std::string(File::getBHDir()) + "/Config/Scenes/RemoteRobot.ros2" + "\"";
+  const std::string simulatorExecutable = getSimulatorExecutable(buildConfig);
+  const std::string remoteRobotScene = std::string(File::getBHDir()) + "/Config/Scenes/RemoteRobot.ros2";
 
   File simFile(simulatorExecutable, "r");
   if(!simFile.exists())
@@ -36,7 +36,7 @@ bool SimCmd::execute(Context& context, const std::vector<std::string>& params)
     if(!compileStatus)
       return false;
   }
-  ProcessRunner r(context, simulatorExecutable + " " + remoteRobotScene);
+  ProcessRunner r(context, "\"" + simulatorExecutable + "\" \"" + remoteRobotScene + "\"");
   r.run();
   if(r.error())
   {
@@ -50,7 +50,7 @@ std::string SimCmd::getSimulatorExecutable(const std::string& buildConfig)
 {
   std::string simulatorExecutable = std::string(File::getBHDir()) + "/Build/"
                                     + platformDirectory() + "/SimRobot/" + buildConfig + "/SimRobot";
-#ifdef OSX
+#ifdef MACOS
   simulatorExecutable += ".app/Contents/MacOS/SimRobot";
 #elif defined WINDOWS
   simulatorExecutable += ".exe";

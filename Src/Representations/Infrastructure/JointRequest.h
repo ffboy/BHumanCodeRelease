@@ -3,48 +3,52 @@
 #include "JointAngles.h"
 #include "StiffnessData.h"
 #include "Tools/Streams/AutoStreamable.h"
+#include "Tools/Debugging/Debugging.h"
 #include <cmath>
 
 STREAMABLE_WITH_BASE(JointRequest, JointAngles,
 {
   JointRequest();
 
+  void draw();
+
   /** Initializes this instance with the mirrored data of other. */
-  void mirror(const JointRequest & other);
+  void mirror(const JointRequest& other);
 
   /** Returns the mirrored angle of joint. */
-  Angle mirror(const Joints::Joint joint) const;
+  Angle mirror(Joints::Joint joint) const;
 
   /** Checkes if the JointRequest is valide. */
-  bool isValid() const;
-  ,
+  bool isValid(bool allowUseDefault = true) const,
+
   (StiffnessData) stiffnessData, /**< the stiffness for all joints */
 });
 
-struct StandOutput : public JointRequest {};
-struct NonArmeMotionEngineOutput : public JointRequest {};
+STREAMABLE_WITH_BASE(HeadJointRequest, JointRequest,
+{,
+});
 
-inline JointRequest::JointRequest() :
-  JointAngles()
-{
-  angles.fill(off);
-}
+STREAMABLE_WITH_BASE(ArmJointRequest, JointRequest,
+{,
+});
 
-inline void JointRequest::mirror(const JointRequest& other)
+STREAMABLE_WITH_BASE(LegJointRequest, JointRequest,
 {
-  JointAngles::mirror(other);
-  stiffnessData.mirror(other.stiffnessData);
-}
+  LegJointRequest()
+  {
+    angles[0] = JointAngles::ignore;
+    angles[1] = JointAngles::ignore;
+  },
+});
 
-inline Angle JointRequest::mirror(const Joints::Joint joint) const
-{
-  return JointAngles::mirror(joint);
-}
+STREAMABLE_WITH_BASE(StandArmRequest, ArmJointRequest,
+{,
+});
 
-inline bool JointRequest::isValid() const
-{
-  for(const Angle& angle : angles)
-    if(std::isnan(static_cast<float>(angle)))
-      return false;
-  return stiffnessData.isValide();
-}
+STREAMABLE_WITH_BASE(StandLegRequest, LegJointRequest,
+{,
+});
+
+STREAMABLE_WITH_BASE(NonArmeMotionEngineOutput, JointRequest,
+{,
+});

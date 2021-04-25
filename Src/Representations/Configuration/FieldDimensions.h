@@ -11,9 +11,10 @@
 
 #include "Tools/Boundary.h"
 #include "Tools/Math/Pose2f.h"
-#include "Tools/Enum.h"
+#include "Tools/Streams/Enum.h"
 #include "Tools/Streams/AutoStreamable.h"
 #include "Tools/Math/Geometry.h"
+#include "Tools/Streams/EnumIndexedArray.h"
 
 STREAMABLE(SimpleFieldDimensions,
 {,
@@ -22,12 +23,10 @@ STREAMABLE(SimpleFieldDimensions,
   (float) xPosOpponentGoalPost,
   (float) xPosOpponentGroundline,
   (float) xPosOpponentPenaltyArea,
-  (float) xPosOpponentDropInLine,
   (float) xPosOpponentPenaltyMark,
   (float) xPosPenaltyStrikerStartPosition,
   (float) xPosHalfWayLine,
   (float) xPosOwnPenaltyArea,
-  (float) xPosOwnDropInLine,
   (float) xPosOwnPenaltyMark,
   (float) xPosOwnGroundline,
   (float) xPosOwnGoalPost,
@@ -36,13 +35,11 @@ STREAMABLE(SimpleFieldDimensions,
 
   (float) yPosLeftFieldBorder,
   (float) yPosLeftSideline,
-  (float) yPosLeftDropInLine,
   (float) yPosLeftPenaltyArea,
   (float) yPosLeftGoal,
   (float) yPosCenterGoal,
   (float) yPosRightGoal,
   (float) yPosRightPenaltyArea,
-  (float) yPosRightDropInLine,
   (float) yPosRightSideline,
   (float) yPosRightFieldBorder,
 
@@ -52,12 +49,7 @@ STREAMABLE(SimpleFieldDimensions,
   (float) goalPostRadius,
   (float) crossBarRadius,
   (float) goalHeight,
-  (float) ballRadius,
-  (float) ballFriction, // in 1/s
   (float) penaltyMarkSize, //vertical (and horizontal) size of a penaltyMark
-  (float) penaltyMarkDistance, //distance between penaltyMark and Goal line
-  (float) penaltyAreaLength, //length of penaltyArea
-  (float) penaltyAreaWidth, //width of penaltyArea
 });
 
 /**
@@ -95,62 +87,11 @@ struct FieldDimensions : public SimpleFieldDimensions
     void pushCircle(const Vector2f& center, float radius, int numOfSegments);
 
     /**
-     * Get the the closest point to p on a field line
-     */
-    Vector2f getClosestPoint(const Vector2f& p) const;
-
-    /**
-     * Intersects the specified line with each field line, returns the
-     * intersection point that is closest to the base of the line.
-     * @param outLineIndex is set to the index of the line that contains the intersection
-     */
-    bool getClosestIntersection(const Geometry::Line& l, int& outLineIndex, Vector2f& outIntersection) const;
-    bool getClosestIntersection(const Geometry::Line& l, Vector2f& outIntersection) const;
-
-    /*
-     * Returns whether a given point is inside the polygon described by the line segments.
-     * Only valid if the line segment table describes a closed polygon.
-     */
-    bool isInside(const Vector2f& v) const;
-
-    /**
-     * The function clips a point to the polygon described by the line segments.
-     * Only valid if the line segment table describes a closed polygon.
-     * @param v The point.
-     * @return How far was the point moved?
-     */
-    float clip(Vector2f& v) const;
-
-    /**
-     * The function returns the point on a line of a certain type closest to given a point.
-     * @param point The point on a line.
-     * @param p The reference point and the rotation of the line.
-     * @param numberOfRotations The number of discretizations of line rotations.
-     * @param minLength The minimum length of the line segments that are considered.
-     * @return whether there is a matching point in that direction
-     */
-    bool getClosestPoint(Vector2f& point, const Pose2f& p, int numberOfRotations, float minLength) const;
-
-    /**
      * The function returns the distance between a point and the closest point on a line of a certain type in a certain direction.
      * @param pose The reference point and direction.
      * @return The distance. It is -1 if no line of that type exists in the certain direction.
      */
     float getDistance(const Pose2f& pose) const;
-  };
-
-  /**
-   * The struct represents all corners of a certain type.
-   */
-  struct CornersTable : public std::vector<Vector2f>
-  {
-    /**
-     * The method returns the position of the corner closest to a point.
-     * The method is only defined if !empty().
-     * @param p The point.
-     * @return The position of the closest corner.
-     */
-    const Vector2f& getClosest(const Vector2f& p) const;
   };
 
   /**
@@ -170,13 +111,16 @@ struct FieldDimensions : public SimpleFieldDimensions
   });
   enum { numOfCornerClasses = numOfCornerClasss }; // extra, because numOfCornerClasss isn't so nice
 
+private:
+  LinesTable straightFieldLines; /**< The field lines as read from the stream. */
+  LinesTable::Circle centerCircle; /**< The center circle as read from the stream. */
+
+public:
   Boundaryf boundary; ///< The outer boundary of the field.
   LinesTable fieldLines; ///< Table of line segments
   LinesTable goalFrameLines; ///< Table of line segments that contains the parts of the goal frame that are on the ground.
   LinesTable fieldLinesWithGoalFrame; ///< Table of line segments that contains both fieldLines and goalFrameLines
-  LinesTable carpetBorder; ///< Describes a polygon around the border of the field carpet. All legal robot positions are inside this polygon.
-  LinesTable fieldBorder; ///< Describes a polygon around the border of the playing field. All legal ball positions are inside this polygon.
-  CornersTable corners[numOfCornerClasses]; ///< All corners on the field.
+  ENUM_INDEXED_ARRAY(std::vector<Vector2f>, CornerClass) corners; ///< All corners on the field.
 
   /**
    * Read field dimensions from configuration file.
@@ -186,9 +130,9 @@ struct FieldDimensions : public SimpleFieldDimensions
   /**
    * Returns true when p is inside the carpet.
    */
-  bool isInsideCarpet(const Vector2f &p) const
+  bool isInsideCarpet(const Vector2f& p) const
   {
-    return carpetBorder.isInside(p);
+    return p.x() <= xPosOpponentFieldBorder && p.x() >= xPosOwnFieldBorder && p.y() <= yPosLeftFieldBorder && p.y() >= yPosRightFieldBorder;
   }
 
   /**
@@ -198,15 +142,24 @@ struct FieldDimensions : public SimpleFieldDimensions
    */
   float clipToCarpet(Vector2f& v) const
   {
-    return carpetBorder.clip(v);
+    const Vector2f old = v;
+    if(v.x() > xPosOpponentFieldBorder)
+      v.x() = xPosOpponentFieldBorder;
+    else if(v.x() < xPosOwnFieldBorder)
+      v.x() = xPosOwnFieldBorder;
+    if(v.y() > yPosLeftFieldBorder)
+      v.y() = yPosLeftFieldBorder;
+    else if(v.y() < yPosRightFieldBorder)
+      v.y() = yPosRightFieldBorder;
+    return (v - old).norm();
   }
 
   /**
    * Returns true when p is inside the playing field.
    */
-  bool isInsideField(const Vector2f &p) const
+  bool isInsideField(const Vector2f& p) const
   {
-    return fieldBorder.isInside(p);
+    return p.x() <= xPosOpponentGroundline && p.x() >= xPosOwnGroundline && p.y() <= yPosLeftSideline && p.y() >= yPosRightSideline;
   }
 
   /**
@@ -216,7 +169,16 @@ struct FieldDimensions : public SimpleFieldDimensions
    */
   float clipToField(Vector2f& v) const
   {
-    return fieldBorder.clip(v);
+    const Vector2f old = v;
+    if(v.x() > xPosOpponentGroundline)
+      v.x() = xPosOpponentGroundline;
+    else if(v.x() < xPosOwnGroundline)
+      v.x() = xPosOwnGroundline;
+    if(v.y() > yPosLeftSideline)
+      v.y() = yPosLeftSideline;
+    else if(v.y() < yPosRightSideline)
+      v.y() = yPosRightSideline;
+    return (v - old).norm();
   }
 
   /**
@@ -241,14 +203,16 @@ struct FieldDimensions : public SimpleFieldDimensions
    */
   void drawGoalFrame() const;
 
-  /**
-   * The method draws the field polygons.
-   * @param ownColor The color of the own team.
-   */
-  void drawPolygons(int ownColor) const;
+protected:
+  void serialize(In* in, Out* out) override;
 
 private:
-  virtual void serialize(In* in, Out* out);
+  static void reg();
+
+  /**
+   * The method draws the field polygons.
+   */
+  void drawPolygons() const;
 
   /**
    * The method draws the field lines.

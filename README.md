@@ -1,8 +1,11 @@
-BHumanCodeRelease
-=================
+# B-Human Code Release
 
-The official 2015 B-Human code release. 
+This is the official 2019 B-Human code release.
 
-The 2014 code release is tagged with "coderelease2014".
+Previous code releases are tagged with "coderelease&lt;year&gt;", where &lt;year&gt; is the year in which the code was released (starting with 2013).
 
-The 2013 code release is tagged with "coderelease2013".
+Please note that **before** you clone this repository on Windows, execute:
+```
+git config --global core.autocrlf input
+git config --global core.eol lf
+```

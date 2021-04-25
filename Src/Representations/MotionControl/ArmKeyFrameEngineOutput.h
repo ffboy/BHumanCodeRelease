@@ -7,13 +7,13 @@
 /**
  * @author <a href="mailto:simont@tzi.de">Simon Taddiken</a>
  */
-STREAMABLE_WITH_BASE(ArmKeyFrameEngineOutput, JointRequest,
+STREAMABLE_WITH_BASE(ArmKeyFrameEngineOutput, ArmJointRequest,
 {
   STREAMABLE(Arm,
   {,
     (bool)(true) isFree,                                    /**< The arm is ready to release by key fram engine */
-    ((ArmKeyFrameRequest) ArmKeyFrameId)(useDefault) motion, /**< The arm motion being executed. */
+    (ArmKeyFrameRequest::ArmKeyFrameId)(ArmKeyFrameRequest::useDefault) motion, /**< The arm motion being executed. */
   }),
 
-  (Arm[Arms::numOfArms]) arms,
+  (ENUM_INDEXED_ARRAY(Arm, Arms::Arm)) arms,
 });

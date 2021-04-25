@@ -71,60 +71,70 @@ QMenu* KickViewHeaderedWidget::createEditMenu() const
 {
   QMenu* menu = new QMenu(tr("&KickEdit"));
 
-  QAction* undoAct, *redoAct, *singleDraw, *reachedDraw, *show3D, *showEditor,
-           *show1D, *show2D, *showVelo, *showAccel, *noExtraView, *followMode;
-
-  undoAct = new QAction(QIcon(":/Icons/arrow_undo.png"), tr("Undo"), menu);
+  QAction* undoAct = new QAction(QIcon(":/Icons/arrow_undo.png"), tr("Undo"), menu);
   undoAct->setShortcut(QKeySequence::Undo);
   undoAct->setStatusTip(tr("Undo last change"));
   undoAct->setEnabled(!undo.empty());
   connect(this, SIGNAL(undoAvailable(bool)), undoAct, SLOT(setEnabled(bool)));
 
-  redoAct = new QAction(QIcon(":/Icons/arrow_redo.png"), tr("Redo"), menu);
+  QAction* redoAct = new QAction(QIcon(":/Icons/arrow_redo.png"), tr("Redo"), menu);
   redoAct->setShortcut(QKeySequence::Redo);
   redoAct->setStatusTip(tr("Redo last undone change"));
   redoAct->setEnabled(!redo.empty());
   connect(this, SIGNAL(redoAvailable(bool)), redoAct, SLOT(setEnabled(bool)));
 
-  show3D = new QAction(tr("Display Phase Drawings"), menu);
+  QAction* show3D = new QAction(tr("Display Phase Drawings"), menu);
   show3D->setStatusTip(tr("Draws curves for every limb either for the current phase or all phases"));
   show3D->setCheckable(true);
+  show3D->setChecked(kickViewWidget->getDrawings());
 
-  singleDraw = new QAction(tr("Display Only Current Phase"), menu);
+  QAction* singleDraw = new QAction(tr("Display Only Current Phase"), menu);
   singleDraw->setStatusTip(tr("Draws only curves for the current Phase"));
   singleDraw->setCheckable(true);
+  singleDraw->setChecked(kickViewWidget->getSingleDrawing());
 
-  reachedDraw = new QAction(tr("Display Reached Positions"), menu);
+  QAction* reachedDraw = new QAction(tr("Display Reached Positions"), menu);
   reachedDraw->setStatusTip(tr("Draws the reached positions into the 3D view"));
   reachedDraw->setCheckable(true);
+  reachedDraw->setChecked(kickViewWidget->getReachedDrawing());
 
-  showEditor = new QAction(tr("Display Editor View"), menu);
+  QAction* showEditor = new QAction(tr("Display Editor View"), menu);
   showEditor->setStatusTip(tr("Shows the editor view"));
   showEditor->setCheckable(true);
+  showEditor->setChecked(kickViewWidget->getEditor());
 
-  show1D = new QAction(tr("Display 1D Views"), menu);
+  QAction* show1D = new QAction(tr("Display 1D Views"), menu);
   show1D->setStatusTip(tr("Shows 1D views of one curve for each axis"));
   show1D->setCheckable(true);
+  show1D->setChecked(kickViewWidget->getTra1d());
 
-  show2D = new QAction(tr("Display 2D Views"), menu);
+  QAction* show2D = new QAction(tr("Display 2D Views"), menu);
   show2D->setStatusTip(tr("Shows 2D views of one curve for plane"));
   show2D->setCheckable(true);
+  show2D->setChecked(kickViewWidget->getTra2d());
 
-  showVelo = new QAction(tr("Display Velocity Views"), menu);
+  QAction* showVelo = new QAction(tr("Display Velocity Views"), menu);
   showVelo->setStatusTip(tr("Shows the velocity of one curve"));
   showVelo->setCheckable(true);
+  showVelo->setChecked(kickViewWidget->getVelocity());
 
-  showAccel = new QAction(tr("Display Acceleration Views"), menu);
+  QAction* showAccel = new QAction(tr("Display Acceleration Views"), menu);
   showAccel->setStatusTip(tr("Shows the acceleration of one curve"));
   showAccel->setCheckable(true);
+  showAccel->setChecked(kickViewWidget->getAccel());
 
-  noExtraView = new QAction(tr("Display No Extra View"), menu);
+  QAction* noExtraView = new QAction(tr("Display No Extra View"), menu);
   noExtraView->setStatusTip(tr("Hides all extra views"));
   noExtraView->setCheckable(true);
+  noExtraView->setChecked(!kickViewWidget->getTra1d()
+                          && !kickViewWidget->getTra2d()
+                          && !kickViewWidget->getVelocity()
+                          && !kickViewWidget->getAccel());
 
-  followMode = new QAction(tr("Enable Follow Mode"), menu);
+  QAction* followMode = new QAction(tr("Enable Follow Mode"), menu);
   followMode->setStatusTip(tr("The robot will react to changes directly"));
   followMode->setCheckable(true);
+  followMode->setChecked(kickViewWidget->getFollowMode());
 
   connect(undoAct, SIGNAL(triggered()), this, SLOT(undoChanges()));
   connect(redoAct, SIGNAL(triggered()), this, SLOT(redoChanges()));
@@ -162,10 +172,6 @@ QMenu* KickViewHeaderedWidget::createEditMenu() const
   menu->addSeparator();
   menu->addAction(followMode);
 
-  showEditor->setChecked(true);
-  show3D->setChecked(true);
-  noExtraView->setChecked(true);
-
   return menu;
 }
 
@@ -202,8 +208,7 @@ void KickViewHeaderedWidget::newButtonClicked()
   parameters.kpy = 0;
 
   parameters.loop = false;
-  parameters.preview = 100;
-  parameters.autoComTra = false;
+  parameters.standLeft = true;
   parameters.comOrigin = Vector2f(10.f, 0.f);
 
   undo.clear();
@@ -217,8 +222,7 @@ void KickViewHeaderedWidget::loadButtonClicked()
 {
   char dirname[260];
   sprintf(dirname, "%s/Config/KickEngine/", File::getBHDir());
-  fileName = QFileDialog::getOpenFileName(this,
-                                          tr("Open Kick Motion"), dirname, tr("Kick Motion Config Files (*.kmc)"));
+  fileName = QFileDialog::getOpenFileName(this, tr("Open Kick Motion"), dirname, tr("Kick Motion Config Files (*.kmc)"));
   QString name;
   name = fileName.remove(0, fileName.lastIndexOf("/", fileName.lastIndexOf("/") - 1) + 1);
 
@@ -243,15 +247,15 @@ void KickViewHeaderedWidget::saveAsButtonClicked()
 {
   char dirname[260];
   sprintf(dirname, "%s/Config/KickEngine/", File::getBHDir());
-  fileName = QFileDialog::getSaveFileName(this,
-                                          tr("Save Kick Motion as..."), dirname, tr("Kick Motion Config Files (*.kmc)"));
+  fileName = QFileDialog::getSaveFileName(this, tr("Save Kick Motion as..."), dirname, tr("Kick Motion Config Files (*.kmc)"));
 
   if(fileName.begin() != fileName.end())
   {
     QString temp  = fileName.remove(0, fileName.lastIndexOf("/", fileName.lastIndexOf("/") - 1) + 1);
     temp = temp.remove(0, temp.lastIndexOf("/") + 1);
     strcpy(parameters.name, temp.remove(temp.lastIndexOf("."), temp.length()).toUtf8().constData());
-    writeParametersToFile(fileName.toUtf8().constData());
+    OutMapFile file(fileName.toUtf8().constData(), true);
+    file << parameters;
     undo.clear();
     redo.clear();
     emit undoAvailable(false);
@@ -264,7 +268,8 @@ void KickViewHeaderedWidget::saveButtonClicked()
   {
     QString name;
     name = fileName.remove(0, fileName.lastIndexOf("/", fileName.lastIndexOf("/") - 1) + 1);
-    writeParametersToFile(name.toUtf8().constData());
+    OutMapFile file(fileName.toUtf8().constData(), true);
+    file << parameters;
     undo.clear();
     redo.clear();
     emit undoAvailable(false);
@@ -272,120 +277,7 @@ void KickViewHeaderedWidget::saveButtonClicked()
     emit saveAvailable(false);
   }
   else
-  {
     saveAsButtonClicked();
-  }
-}
-
-void KickViewHeaderedWidget::writeParametersToFile(const std::string& name)
-{
-  OutTextFile file(name, false);
-  file << "footOrigin" << "=" << "{x" << "=" << parameters.footOrigin.x() << ";" << "y"  << "=" << parameters.footOrigin.y() << ";" << "z"  << "=" << parameters.footOrigin.z() << ";};" << endl;
-  file << "footRotOrigin" << "=" << "{x" << "=" << parameters.footRotOrigin.x() << ";" << "y"  << "=" << parameters.footRotOrigin.y() << ";" << "z"  << "=" << parameters.footRotOrigin.z() << ";};" << endl;
-  file << "armOrigin" << "=" << "{x" << "=" << parameters.armOrigin.x() << ";" << "y"  << "=" << parameters.armOrigin.y() << ";" << "z"  << "=" << parameters.armOrigin.z() << ";};" << endl;
-  file << "handRotOrigin" << "=" << "{x" << "=" << parameters.handRotOrigin.x() << ";" << "y"  << "=" << parameters.handRotOrigin.y() << ";" << "z"  << "=" << parameters.handRotOrigin.z() << ";};" << endl;
-  file << "comOrigin" << "=" << "{x" << "=" << parameters.comOrigin.x() << ";" << "y"  << "=" << parameters.comOrigin.y() << ";};" << endl;
-  file << "headOrigin" << "=" << "{x" << "=" << parameters.headOrigin.x() << ";" << "y"  << "=" << parameters.comOrigin.y() << ";};" << endl;
-  file << "kpx" << "=" << parameters.kpx << ";" << endl;
-  file << "kix" << "=" << parameters.kix << ";" << endl;
-  file << "kdx" << "=" << parameters.kdx << ";" << endl;
-  file << "kpy" << "=" << parameters.kpy << ";" << endl;
-  file << "kiy" << "=" << parameters.kiy << ";" << endl;
-  file << "kdy" << "=" << parameters.kdy << ";" << endl;
-  file << "preview" << "=" << parameters.preview << ";" << endl;
-  if(parameters.loop)
-    file << "loop" << "=" << "true" << ";" << endl;
-  else
-    file << "loop" << "=" << "false" << ";" << endl;
-  if(parameters.autoComTra)
-    file << "autoComTra" << "=" << "true" << ";" << endl;
-  else
-    file << "autoComTra" << "=" << "false" << ";" << endl;
-
-  if(parameters.ignoreHead)
-    file << "ignoreHead" << "=" << "true" << ";" << endl;
-  else
-    file << "ignoreHead" << "=" << "false" << ";" << endl;
-
-  file << "numberOfPhases" << "=" << parameters.numberOfPhases << ";" << endl;
-  file << "phaseParameters" << "=" << "[" << endl;
-
-  for(int i = 0; i < parameters.numberOfPhases; i++)
-  {
-    file << "{" << endl;
-    file << "duration" << "=" << parameters.phaseParameters[i].duration << ";" << endl;
-    file << "leftFootTra1" << "=" << "{x" << "=" << parameters.phaseParameters[i].controlPoints[Phase::leftFootTra][1].x()
-         << ";" << "y"  << "=" << parameters.phaseParameters[i].controlPoints[Phase::leftFootTra][1].y()
-         << ";" << "z"  << "=" << parameters.phaseParameters[i].controlPoints[Phase::leftFootTra][1].z() << ";};" << endl;
-    file << "leftFootTra2" << "=" << "{x" << "=" << parameters.phaseParameters[i].controlPoints[Phase::leftFootTra][2].x()
-         << ";" << "y"  << "=" << parameters.phaseParameters[i].controlPoints[Phase::leftFootTra][2].y()
-         << ";" << "z"  << "=" << parameters.phaseParameters[i].controlPoints[Phase::leftFootTra][2].z() << ";};" << endl;
-    file << "leftFootRot1" << "=" << "{x" << "=" << parameters.phaseParameters[i].controlPoints[Phase::leftFootRot][1].x()
-         << ";" << "y"  << "=" << parameters.phaseParameters[i].controlPoints[Phase::leftFootRot][1].y()
-         << ";" << "z"  << "=" << parameters.phaseParameters[i].controlPoints[Phase::leftFootRot][1].z() << ";};" << endl;
-    file << "leftFootRot2" << "=" << "{x" << "=" << parameters.phaseParameters[i].controlPoints[Phase::leftFootRot][2].x()
-         << ";" << "y"  << "=" << parameters.phaseParameters[i].controlPoints[Phase::leftFootRot][2].y()
-         << ";" << "z"  << "=" << parameters.phaseParameters[i].controlPoints[Phase::leftFootRot][2].z() << ";};" << endl;
-    file << "rightFootTra1" << "=" << "{x" << "=" << parameters.phaseParameters[i].controlPoints[Phase::rightFootTra][1].x()
-         << ";" << "y"  << "=" << parameters.phaseParameters[i].controlPoints[Phase::rightFootTra][1].y()
-         << ";" << "z"  << "=" << parameters.phaseParameters[i].controlPoints[Phase::rightFootTra][1].z() << ";};" << endl;
-    file << "rightFootTra2" << "=" << "{x" << "=" << parameters.phaseParameters[i].controlPoints[Phase::rightFootTra][2].x()
-         << ";" << "y"  << "=" << parameters.phaseParameters[i].controlPoints[Phase::rightFootTra][2].y()
-         << ";" << "z"  << "=" << parameters.phaseParameters[i].controlPoints[Phase::rightFootTra][2].z() << ";};" << endl;
-    file << "rightFootRot1" << "=" << "{x" << "=" << parameters.phaseParameters[i].controlPoints[Phase::rightFootRot][1].x()
-         << ";" << "y"  << "=" << parameters.phaseParameters[i].controlPoints[Phase::rightFootRot][1].y()
-         << ";" << "z"  << "=" << parameters.phaseParameters[i].controlPoints[Phase::rightFootRot][1].z() << ";};" << endl;
-    file << "rightFootRot2" << "=" << "{x" << "=" << parameters.phaseParameters[i].controlPoints[Phase::rightFootRot][2].x()
-         << ";" << "y"  << "=" << parameters.phaseParameters[i].controlPoints[Phase::rightFootRot][2].y()
-         << ";" << "z"  << "=" << parameters.phaseParameters[i].controlPoints[Phase::rightFootRot][2].z() << ";};" << endl;
-
-    file << "leftArmTra1" << "=" << "{x" << "=" << parameters.phaseParameters[i].controlPoints[Phase::leftArmTra][1].x()
-         << ";" << "y"  << "=" << parameters.phaseParameters[i].controlPoints[Phase::leftArmTra][1].y()
-         << ";" << "z"  << "=" << parameters.phaseParameters[i].controlPoints[Phase::leftArmTra][1].z() << ";};" << endl;
-    file << "leftArmTra2" << "=" << "{x" << "=" << parameters.phaseParameters[i].controlPoints[Phase::leftArmTra][2].x()
-         << ";" << "y"  << "=" << parameters.phaseParameters[i].controlPoints[Phase::leftArmTra][2].y()
-         << ";" << "z"  << "=" << parameters.phaseParameters[i].controlPoints[Phase::leftArmTra][2].z() << ";};" << endl;
-    file << "leftHandRot1" << "=" << "{x" << "=" << parameters.phaseParameters[i].controlPoints[Phase::leftHandRot][1].x()
-         << ";" << "y"  << "=" << parameters.phaseParameters[i].controlPoints[Phase::leftHandRot][1].y()
-         << ";" << "z"  << "=" << parameters.phaseParameters[i].controlPoints[Phase::leftHandRot][1].z() << ";};" << endl;
-    file << "leftHandRot2" << "=" << "{x" << "=" << parameters.phaseParameters[i].controlPoints[Phase::leftHandRot][2].x()
-         << ";" << "y"  << "=" << parameters.phaseParameters[i].controlPoints[Phase::leftHandRot][2].y()
-         << ";" << "z"  << "=" << parameters.phaseParameters[i].controlPoints[Phase::leftHandRot][2].z() << ";};" << endl;
-
-    file << "rightArmTra1" << "=" << "{x" << "=" << parameters.phaseParameters[i].controlPoints[Phase::rightArmTra][1].x()
-         << ";" << "y"  << "=" << parameters.phaseParameters[i].controlPoints[Phase::rightArmTra][1].y()
-         << ";" << "z"  << "=" << parameters.phaseParameters[i].controlPoints[Phase::rightArmTra][1].z() << ";};" << endl;
-    file << "rightArmTra2" << "=" << "{x" << "=" << parameters.phaseParameters[i].controlPoints[Phase::rightArmTra][2].x()
-         << ";" << "y"  << "=" << parameters.phaseParameters[i].controlPoints[Phase::rightArmTra][2].y()
-         << ";" << "z"  << "=" << parameters.phaseParameters[i].controlPoints[Phase::rightArmTra][2].z() << ";};" << endl;
-    file << "rightHandRot1" << "=" << "{x" << "=" << parameters.phaseParameters[i].controlPoints[Phase::rightHandRot][1].x()
-         << ";" << "y"  << "=" << parameters.phaseParameters[i].controlPoints[Phase::rightHandRot][1].y()
-         << ";" << "z"  << "=" << parameters.phaseParameters[i].controlPoints[Phase::rightHandRot][1].z() << ";};" << endl;
-    file << "rightHandRot2" << "=" << "{x" << "=" << parameters.phaseParameters[i].controlPoints[Phase::rightHandRot][2].x()
-         << ";" << "y"  << "=" << parameters.phaseParameters[i].controlPoints[Phase::rightHandRot][2].y()
-         << ";" << "z"  << "=" << parameters.phaseParameters[i].controlPoints[Phase::rightHandRot][2].z() << ";};" << endl;
-
-    file << "comTra1" << "=" << "{x" << "=" << parameters.phaseParameters[i].comTra[1].x()
-         << ";" << "y"  << "=" << parameters.phaseParameters[i].comTra[1].y() << ";};" << endl;
-    file << "comTra2" << "=" << "{x" << "=" << parameters.phaseParameters[i].comTra[2].x()
-         << ";" << "y"  << "=" << parameters.phaseParameters[i].comTra[2].y() << ";};" << endl;
-
-    file << "headTra1" << "=" << "{x" << "=" << parameters.phaseParameters[i].headTra[1].x()
-         << ";" << "y"  << "=" << parameters.phaseParameters[i].headTra[1].y() << ";};" << endl;
-    file << "headTra2" << "=" << "{x" << "=" << parameters.phaseParameters[i].headTra[2].x()
-         << ";" << "y"  << "=" << parameters.phaseParameters[i].headTra[2].y() << ";};" << endl;
-
-    file << "odometryOffset" << "=" << "{x" << "=" << parameters.phaseParameters[i].odometryOffset.x()
-         << ";" << "y"  << "=" << parameters.phaseParameters[i].odometryOffset.y()
-         << ";" << "z"  << "=" << parameters.phaseParameters[i].odometryOffset.z() << ";};" << endl;
-
-    if(i < parameters.numberOfPhases - 1)
-      file << "}," << endl;
-    else
-      file << "}" << endl;
-  }
-
-  file << "];" << endl;
 }
 
 void KickViewHeaderedWidget::addStateToUndoList()
@@ -397,9 +289,7 @@ void KickViewHeaderedWidget::addStateToUndoList()
     emit saveAvailable(true);
 
   if(undo.size() >= 20)
-  {
     undo.erase(undo.begin());
-  }
 }
 
 void KickViewHeaderedWidget::undoChanges()
@@ -418,9 +308,7 @@ void KickViewHeaderedWidget::undoChanges()
       parameters = last;
       kickViewWidget->updateCommon();
       for(int i = 0; i < parameters.numberOfPhases; i++)
-      {
         kickViewWidget->fillModelWithPhaseData(i);
-      }
     }
     else
     {
@@ -449,16 +337,15 @@ void KickViewHeaderedWidget::redoChanges()
     if(fileName.begin() != fileName.end() && fileName != QString("newKick.kmc"))
       emit saveAvailable(true);
 
-    if(undo.size() >= 20) undo.erase(undo.begin());
+    if(undo.size() >= 20)
+      undo.erase(undo.begin());
 
     if(parameters.numberOfPhases == last.numberOfPhases)
     {
       parameters = last;
       kickViewWidget->updateCommon();
       for(int i = 0; i < parameters.numberOfPhases; i++)
-      {
         kickViewWidget->fillModelWithPhaseData(i);
-      }
     }
     else
     {
@@ -472,10 +359,10 @@ void KickViewHeaderedWidget::redoChanges()
     emit redoAvailable(false);
 }
 
-KickView::KickView(const QString& fullName, RobotConsole& console, const MotionRequest& motionRequest, const JointAngles& jointAngles, 
-           const JointCalibration& jointCalibration, const RobotDimensions& robotDimensions, const std::string& mr, SimRobotCore2::Body* robot) :
+KickView::KickView(const QString& fullName, RobotConsole& console, const MotionRequest& motionRequest, const JointAngles& jointAngles,
+                   const JointLimits& jointLimits, const RobotDimensions& robotDimensions, const std::string& mr, SimRobotCore2::Body* robot) :
   fullName(fullName), console(console), motionRequest(motionRequest), jointAngles(jointAngles),
-  jointCalibration(jointCalibration), robotDimensions(robotDimensions), motionRequestCommand(mr), robot(robot)
+  jointLimits(jointLimits), robotDimensions(robotDimensions), motionRequestCommand(mr), robot(robot)
 {}
 
 SimRobot::Widget* KickView::createWidget()

@@ -1,6 +1,6 @@
 /**
  * The file implements a class that represents the blackboard containing all
- * representations used in a process.
+ * representations used in a thread.
  * @author Thomas Röfer
  */
 
@@ -10,14 +10,14 @@
 #include "Platform/SystemCall.h"
 #include <unordered_map>
 
-/** The instance of the blackboard of the current process. */
-static PROCESS_LOCAL Blackboard* theInstance = nullptr;
+/** The instance of the blackboard of the current thread. */
+static thread_local Blackboard* theInstance = nullptr;
 
 /** The actual type of the map for all entries. */
 class Blackboard::Entries : public std::unordered_map<std::string, Blackboard::Entry> {};
 
 Blackboard::Blackboard() :
-  entries(*new Entries)
+  entries(new Entries)
 {
   theInstance = this;
 }
@@ -25,24 +25,23 @@ Blackboard::Blackboard() :
 Blackboard::~Blackboard()
 {
   ASSERT(theInstance == this);
-  theInstance = 0;
-  ASSERT(entries.size() == 0);
-  delete &entries;
+  theInstance = nullptr;
+  ASSERT(entries->size() == 0);
 }
 
 Blackboard::Entry& Blackboard::get(const char* representation)
 {
-  return entries[representation];
+  return (*entries)[representation];
 }
 
 const Blackboard::Entry& Blackboard::get(const char* representation) const
 {
-  return entries.find(representation)->second;
+  return entries->find(representation)->second;
 }
 
 bool Blackboard::exists(const char* representation) const
 {
-  return entries.find(representation) != entries.end();
+  return entries->find(representation) != entries->end();
 }
 
 Streamable& Blackboard::operator[](const char* representation)
@@ -65,10 +64,15 @@ void Blackboard::free(const char* representation)
   ASSERT(entry.counter > 0);
   if(--entry.counter == 0)
   {
-    delete entry.data;
-    entries.erase(representation);
+    entries->erase(representation);
     ++version;
   }
+}
+
+void Blackboard::reset(const char* representation)
+{
+  Entry& entry = get(representation);
+  entry.reset(&*entry.data);
 }
 
 Blackboard& Blackboard::getInstance()

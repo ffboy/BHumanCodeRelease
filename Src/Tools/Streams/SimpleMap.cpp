@@ -9,7 +9,15 @@
  * array ::= '[' [ ( literal | '{' record '}' ) { ',' ( literal | '{' record '}' ) } [ ',' ] ']'
  * literal ::= '"' { anychar1 } '"' | { anychar2 }
  *
- * anychar1 must escape doublequotes and backslash with a backslash
+ * It can also parse a JSON-like format, which has the following grammar:
+ *
+ * map ::= record
+ * record ::= '{' field { ',' field } [ ',' ] '}'
+ * field ::= literal ':' ( literal | record | array )
+ * array ::= '[' [ ( literal | record | array ) { ',' ( literal | record | array ) } [ ',' ] ']'
+ * literal ::= '"' { anychar1 } '"' | { anychar2 }
+ *
+ * anychar1 must escape double quotes and backslash with a backslash
  * anychar2 cannot contains whitespace and other characters used by the grammar.
  *
  * @author Thomas Röfer
@@ -18,6 +26,7 @@
 #include "SimpleMap.h"
 #include <stdexcept>
 #include "InStreams.h"
+#include "Platform/BHAssert.h"
 #include "Tools/Debugging/Debugging.h"
 
 SimpleMap::Literal::operator In&() const
@@ -71,6 +80,9 @@ void SimpleMap::nextSymbol()
       nextChar();
 
     string = "";
+    if(jsonMode && c == ':')
+      c = '=';
+
     switch(c)
     {
       case 0:
@@ -164,7 +176,7 @@ void SimpleMap::unexpectedSymbol()
   if(symbol == literal)
     throw std::logic_error(std::string("Unexpected literal '") + string + "'");
   else
-    throw std::logic_error(std::string("Unexpected symbol '") + getName(symbol) + "'");
+    throw std::logic_error(std::string("Unexpected symbol '") + TypeRegistry::getEnumName(symbol) + "'");
 }
 
 void SimpleMap::expectSymbol(Symbol expected)
@@ -176,15 +188,23 @@ void SimpleMap::expectSymbol(Symbol expected)
 
 SimpleMap::Record* SimpleMap::parseRecord()
 {
+  if(jsonMode)
+    nextSymbol();
   Record* r = new Record;
   try
   {
     while(symbol == literal)
     {
       std::string key = string;
+      if(jsonMode && !key.empty() && key.front() == '"')
+      {
+        ASSERT(key.length() >= 2);
+        ASSERT(key.back() == '"');
+        key = key.substr(1, key.length() - 2);
+      }
       nextSymbol();
       if(r->find(key) != r->end())
-        throw std::logic_error(std::string("dublicate attribute '") + key + "'");
+        throw std::logic_error(std::string("duplicate attribute '") + key + "'");
       expectSymbol(equals);
       if(symbol == literal)
       {
@@ -193,16 +213,23 @@ SimpleMap::Record* SimpleMap::parseRecord()
       }
       else if(symbol == lBrace)
       {
-        nextSymbol();
+        if(!jsonMode)
+          nextSymbol();
         (*r)[key] = parseRecord();
-        expectSymbol(rBrace);
+        if(!jsonMode)
+          expectSymbol(rBrace);
       }
       else if(symbol == lBracket)
         (*r)[key] = parseArray();
       else
         unexpectedSymbol();
-      expectSymbol(semicolon);
+      if(!jsonMode)
+        expectSymbol(semicolon);
+      else if(symbol != rBrace)
+        expectSymbol(comma);
     }
+    if(jsonMode)
+      expectSymbol(rBrace);
   }
   catch(const std::logic_error& e)
   {
@@ -218,7 +245,7 @@ SimpleMap::Array* SimpleMap::parseArray()
   Array* a = new Array();
   try
   {
-    while(symbol == literal || symbol == lBrace)
+    while(symbol == literal || symbol == lBrace || (jsonMode && symbol == lBracket))
     {
       if(symbol == literal)
       {
@@ -227,10 +254,14 @@ SimpleMap::Array* SimpleMap::parseArray()
       }
       else if(symbol == lBrace)
       {
-        nextSymbol();
+        if(!jsonMode)
+          nextSymbol();
         a->push_back(parseRecord());
-        expectSymbol(rBrace);
+        if(!jsonMode)
+          expectSymbol(rBrace);
       }
+      else if(jsonMode && symbol == lBracket)
+        a->push_back(parseArray());
       if(symbol != rBracket)
         expectSymbol(comma);
     }
@@ -244,18 +275,24 @@ SimpleMap::Array* SimpleMap::parseArray()
   return a;
 }
 
-SimpleMap::SimpleMap(In& stream, const std::string& name) :
-  stream(stream), c(0), row(1), column(0), root(0)
+SimpleMap::SimpleMap(In& stream, const std::string& name, bool jsonMode) :
+  stream(stream), c(0), row(1), column(0), root(0), jsonMode(jsonMode)
 {
   try
   {
     nextChar();
     nextSymbol();
+    if(jsonMode && lBrace != symbol)
+      unexpectedSymbol();
     root = parseRecord();
   }
   catch(const std::logic_error& e)
   {
+#ifdef TARGET_ROBOT
+    FAIL(name << "(" << row << ", " << column << "): " << e.what());
+#else
     OUTPUT_ERROR(name << "(" << row << ", " << column << "): " << e.what());
+#endif
   }
 }
 

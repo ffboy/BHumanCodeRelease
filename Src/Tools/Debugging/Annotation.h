@@ -1,6 +1,6 @@
 /**
  * @file Annotation.h
- * @author <A href="mailto:andisto@tzi.de">Andreas Stolpmann</A>
+ * @author Andreas Stolpmann
  */
 
 #pragma once
@@ -26,4 +26,5 @@
     Global::getAnnotationManager().addAnnotation(); \
     Global::getAnnotationManager().getOut().out.text << name << message; \
     Global::getAnnotationManager().getOut().out.finishMessage(idAnnotation); \
-  } while(false)
+  } \
+  while(false)

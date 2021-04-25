@@ -6,18 +6,16 @@
  * @author Martin Lötzsch
  */
 
-#include <cstring>
-
 #include "MessageQueue.h"
 #include "Platform/BHAssert.h"
 #include "Tools/Debugging/Debugging.h"
+#include <cstring>
 
 void MessageQueue::handleAllMessages(MessageHandler& handler)
 {
   for(int i = 0; i < queue.numberOfMessages; ++i)
   {
     queue.setSelectedMessageForReading(i);
-    in.config.reset();
     in.text.reset();
     handler.handleMessage(in);
   }
@@ -27,17 +25,23 @@ void MessageQueue::copyAllMessages(MessageQueue& other)
 {
   if(queue.usedSize >= MessageQueueBase::headerSize)
   {
-    char* dest = other.queue.reserve(queue.usedSize - MessageQueueBase::headerSize);
-    if(dest && !other.queue.mappedIDs)
+    if(!queue.mappedIDs)
     {
-      memcpy(dest - MessageQueueBase::headerSize, queue.buf, queue.usedSize);
-      other.queue.numberOfMessages += queue.numberOfMessages;
-      other.queue.usedSize += queue.usedSize;
-      other.queue.writePosition = 0;
+      char* dest = other.queue.reserve(queue.usedSize - MessageQueueBase::headerSize);
+      if(dest)
+      {
+        memcpy(dest - MessageQueueBase::headerSize, queue.buf, queue.usedSize);
+        other.queue.numberOfMessages += queue.numberOfMessages;
+        other.queue.usedSize += queue.usedSize;
+        other.queue.writePosition = 0;
+        return;
+      }
     }
-    else // Not all messages fit in there, so try step by step (some will be missing).
-      for(int i = 0; i < queue.numberOfMessages; ++i)
-        copyMessage(i, other);
+
+    // Copy step by step by step, because not all messages will fit
+    // or the message ids should be translated.
+    for(int i = 0; i < queue.numberOfMessages; ++i)
+      copyMessage(i, other);
   }
 }
 
@@ -47,11 +51,14 @@ void MessageQueue::moveAllMessages(MessageQueue& other)
   clear();
 }
 
-void MessageQueue::patchMessage(int message, int index, char value)
+void MessageQueue::patchMessage(int message, int index, const std::string& value)
 {
   queue.setSelectedMessageForReading(message);
   ASSERT(index >= 0 && index < queue.getMessageSize());
-  const_cast<char*>(queue.getData())[index] = value;
+  // streamed strings have 4 Bytes before the real string
+  ASSERT(value.size() + 4 == static_cast<size_t>(queue.getMessageSize()));
+  OutBinaryMemory stream(value.size() + 4, const_cast<char*>(queue.getData() + index));
+  stream << value;
 }
 
 void MessageQueue::copyMessage(int message, MessageQueue& other)
@@ -63,7 +70,7 @@ void MessageQueue::copyMessage(int message, MessageQueue& other)
 
 void MessageQueue::write(Out& stream) const
 {
-  stream << queue.usedSize << queue.numberOfMessages;
+  stream << static_cast<unsigned>(queue.usedSize) << ((queue.numberOfMessages & 0x0fffffff) | (static_cast<unsigned>(queue.usedSize >> 4) & 0xf0000000));
   stream.write(queue.buf, queue.usedSize);
 }
 
@@ -79,9 +86,13 @@ void MessageQueue::append(Out& stream) const
 
 void MessageQueue::append(In& stream)
 {
-  unsigned usedSize,
-           numberOfMessages;
-  stream >> usedSize >> numberOfMessages;
+  size_t usedSize = 0;
+  unsigned numberOfMessages;
+  stream >> *reinterpret_cast<unsigned*>(&usedSize) >> numberOfMessages;
+  usedSize |= static_cast<size_t>(numberOfMessages & 0xf0000000) << 4;
+  numberOfMessages &= 0x0fffffff;
+  if(numberOfMessages == 0x0fffffff)
+    numberOfMessages = static_cast<unsigned>(-1);
   // Trying a direct copy. This is hacked, but fast.
   char* dest = numberOfMessages == static_cast<unsigned>(-1) ? nullptr : queue.reserve(usedSize - MessageQueueBase::headerSize);
   if(dest)
@@ -100,9 +111,9 @@ void MessageQueue::append(In& stream)
 
       stream.read(&size, 3);
 
-      if((id >= numOfDataMessageIDs || size == 0) && numberOfMessages == static_cast<unsigned>(-1))
+      if(id >= numOfDataMessageIDs && numberOfMessages == static_cast<unsigned>(-1))
       {
-        OUTPUT_WARNING("MessageQueue: Logfile appears to be broken. Skipping rest of file. Read messages: " << queue.numberOfMessages << " read size:" << queue.usedSize);
+        OUTPUT_WARNING("MessageQueue: Log file appears to be broken. Skipping rest of file. Read messages: " << queue.numberOfMessages << " read size: " << std::to_string(queue.usedSize));
         break;
       }
 
@@ -137,7 +148,7 @@ void operator>>(InMessage& message, MessageQueue& queue)
 
 char* MessageQueue::getStreamedData()
 {
-  ((unsigned*)queue.buf)[-2] = queue.usedSize;
-  ((unsigned*)queue.buf)[-1] = queue.numberOfMessages;
+  ((unsigned*)queue.buf)[-2] = static_cast<unsigned>(queue.usedSize);
+  ((unsigned*)queue.buf)[-1] = (queue.numberOfMessages & 0x0fffffff) | (static_cast<unsigned>(queue.usedSize >> 4) & 0xf0000000);
   return queue.buf - MessageQueueBase::queueHeaderSize;
 }

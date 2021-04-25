@@ -9,7 +9,8 @@
 
 #include "Tools/Math/Angle.h"
 #include "Tools/Math/Eigen.h"
-#include "Tools/Streams/AutoStreamable.h"
+#include "Tools/RobotParts/FsrSensors.h"
+#include "Tools/Streams/EnumIndexedArray.h"
 
 /**
  * This representation contains all necessary dimensions of the robot.
@@ -39,6 +40,13 @@ STREAMABLE(RobotDimensions,
   (float) upperLegLength,           //!< Length between leg joints HipPitch and KneePitch in z-direction.
   (float) lowerLegLength,           //!< Length between leg joints KneePitch and AnklePitch in z-direction.
   (float) footHeight,               //!< Height between the sole of the foot and the foot joint AnkleRoll.
+  (float) footLength,               //!< Length from the ankle joint to the tip of the foot.
+  (float) soleToFrontEdgeLength,    //!< Length from sole middle point to the front edge of the foot.
+  (float) soleToInnerEdgeLength,    //!< Length from sole middle point to the inner edge of the foot.
+  (float) soleToOuterEdgeLength,    //!< Length from sole middle point to the outer edge of the foot.
+  (float) soleToBackEdgeLength,     //!< Length from sole middle point to the back edge of the foot.
+  (Vector2f) bumperInnerEdge,       //!< Position offset for the inner foot bumper edge relativ to the sole origion (without sign)
+  (Vector2f) bumperOuterEdge,       //!< Position offset for the outer foot bumper edge relativ to the sole origion (without sign)
   (float) hipToNeckLength,          //!< Height offset between hip and joint headYaw.
 
   (float) xOffsetNeckToLowerCamera, //!< Forward offset between joint headPitch and lower camera.
@@ -56,7 +64,10 @@ STREAMABLE(RobotDimensions,
   (float) xOffsetElbowToWrist,      //!< The length from Elbow to WristJoint.
   (Vector3f) handOffset,            //!< The offset of a hand relative to his wrist coordinate frame.
   (float) handRadius,               //!< The radius of a virtuel sphere a hand can span.
-  (float) armRadius,                //!< The radius of a arm.
+  (float) armRadius,                //!< The radius of an arm.
 
   (Vector3f) imuOffset,             //!< The offset of the imu relative to the torso coordinate frame.
+
+  (ENUM_INDEXED_ARRAY(Vector2f, FsrSensors::FsrSensor)) leftFsrPositions, //!< The positions of the fsr on the left foot.
+  (ENUM_INDEXED_ARRAY(Vector2f, FsrSensors::FsrSensor)) rightFsrPositions, //!< The positions of the fsr on the right foot.
 });

@@ -1,14 +1,13 @@
-/*
+/**
  * File:   RangeSelector.h
+ * @author <a href="mailto:jesse@tzi.de">Jesse Richter-Klug</a>
  * Author: marcel
- *
- * Created on September 27, 2013, 3:32 PM
  */
 
 #pragma once
 
 #include "Tools/Math/BHMath.h"
-#include "Representations/Configuration/ColorCalibration.h"
+#include "Representations/Configuration/FieldColors.h"
 
 #include <qxtspanslider.h>
 #include <QLineEdit>
@@ -26,26 +25,43 @@ public:
   RangeSelector(const QString& name, ColorCalibrationWidget* parent,
                 int min, int max);
 
-  void updateWidgets();
+  virtual void updateWidgets() = 0;
   void setEnabled(bool value);
 
 protected:
   QxtSpanSlider* slider;
   const ColorCalibrationWidget* parent;
+  bool allowedSliderOverRun = true;
+
+  void updateColorCalibration(int value, bool isMin, Rangeuc& range)
+  {
+    if(isMin)
+    {
+      range.min = allowedSliderOverRun || value < range.max ? static_cast<unsigned char>(value) : range.max;
+      updateSlider(range);
+    }
+    else
+    {
+      range.max = allowedSliderOverRun || value > range.min ? static_cast<unsigned char>(value) : range.min;
+      updateSlider(range);
+    }
+  }
+
+  /** must be implemented by subclasses to update slider with specific component of color. */
+  void updateSlider(const Rangeuc& range)
+  {
+    slider->setUpperValue(range.max);
+    slider->setLowerValue(range.min);
+  }
 
 private:
   QLineEdit* lower;
   QLineEdit* upper;
 
   /** updates the ColorCalibration, usually invoked by the slider/labels. */
-  void updateColorCalibration(int value, bool isMin);
+  virtual void updateColorCalibration(int value, bool isMin) = 0;
 
   /** must be implemented by subclasses to update the specific component of a color. */
-  virtual void updateColorCalibration(int value, bool isMin,
-                                    ColorCalibration::HSIRanges& color) = 0;
-
-  /** must be implemented by subclasses to update slider with specific component of color. */
-  virtual void updateSlider(ColorCalibration::HSIRanges& color) = 0;
 
 private slots:
   void sliderLowerChanged(int value);
@@ -54,76 +70,17 @@ private slots:
   void labelUpperChanged(QString value);
 };
 
-
-class HueSelector : public RangeSelector
+class HueFieldSelector : public RangeSelector
 {
-private:
-  void updateColorCalibration(int value, bool isMin,
-                            ColorCalibration::HSIRanges& color)
-  {
-    if(isMin)
-      color.hue.min = value;
-    else
-      color.hue.max = value;
-  }
-
-  void updateSlider(ColorCalibration::HSIRanges& color)
-  {
-    slider->setUpperValue(color.hue.max);
-    slider->setLowerValue(color.hue.min);
-  }
-
 public:
-  HueSelector(const QString& name, ColorCalibrationWidget* parent,
-              int min, int max)
-  : RangeSelector(name, parent, min, max) {}
-};
+  HueFieldSelector(const QString& name, ColorCalibrationWidget* parent, int min, int max) :
+    RangeSelector(name, parent, min, max)
+  {
+    allowedSliderOverRun = false;
+  }
 
-class SaturationSelector : public RangeSelector
-{
+  void updateWidgets() override;
+
 private:
-
-  void updateColorCalibration(int value, bool isMin,
-                              ColorCalibration::HSIRanges& color)
-  {
-    if(isMin)
-      color.saturation.min = value;
-    else
-      color.saturation.max = value;
-  }
-
-  void updateSlider(ColorCalibration::HSIRanges& color)
-  {
-    slider->setUpperValue(color.saturation.max);
-    slider->setLowerValue(color.saturation.min);
-  }
-
-public:
-  SaturationSelector(const QString& name, ColorCalibrationWidget* parent,
-                     int min, int max)
-  : RangeSelector(name, parent, min, max) {}
-};
-
-class IntensitySelector : public RangeSelector
-{
-private:
-  void updateColorCalibration(int value, bool isMin,
-                              ColorCalibration::HSIRanges& color)
-  {
-    if(isMin)
-      color.intensity.min = value;
-    else
-      color.intensity.max = value;
-  }
-
-  void updateSlider(ColorCalibration::HSIRanges& color)
-  {
-    slider->setUpperValue(color.intensity.max);
-    slider->setLowerValue(color.intensity.min);
-  }
-
-public:
-  IntensitySelector(const QString& name, ColorCalibrationWidget* parent,
-                int min, int max)
-  : RangeSelector(name, parent, min, max) {}
+  void updateColorCalibration(int value, bool isMin) override;
 };

@@ -1,6 +1,6 @@
 /**
  * @file AnnotationManager.h
- * @author <A href="mailto:andisto@tzi.de">Andreas Stolpmann</A>
+ * @author Andreas Stolpmann
  */
 
 #pragma once
@@ -14,16 +14,21 @@ class AnnotationManager
 {
 private:
   MessageQueue outData;
-  unsigned currentFrame = 0;
   unsigned annotationCounter = 0;
   unsigned lastGameState;
+  unsigned lastSetPlay;
 
-  friend class Process;
+  friend class ThreadFrame; /**< A thread is allowed to create the instance. */
 
-  AnnotationManager(); // private so only Process can access it.
+  /**
+   * Default constructor.
+   * No other instance of this class is allowed except the one accessible via Global::getAnnotationManager.
+   * Therefore the constructor is private.
+   */
+  AnnotationManager();
 
 public:
-  void signalProcessStart();
+  void signalThreadStart();
   void clear();
 
   void addAnnotation();

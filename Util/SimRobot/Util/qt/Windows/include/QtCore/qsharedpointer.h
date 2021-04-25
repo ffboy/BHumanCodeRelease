@@ -1,7 +1,7 @@
 /****************************************************************************
 **
-** Copyright (C) 2015 The Qt Company Ltd.
-** Contact: http://www.qt.io/licensing/
+** Copyright (C) 2016 The Qt Company Ltd.
+** Contact: https://www.qt.io/licensing/
 **
 ** This file is part of the QtCore module of the Qt Toolkit.
 **
@@ -11,29 +11,27 @@
 ** accordance with the commercial license agreement provided with the
 ** Software or, alternatively, in accordance with the terms contained in
 ** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see http://www.qt.io/terms-conditions. For further
-** information use the contact form at http://www.qt.io/contact-us.
+** and conditions see https://www.qt.io/terms-conditions. For further
+** information use the contact form at https://www.qt.io/contact-us.
 **
 ** GNU Lesser General Public License Usage
 ** Alternatively, this file may be used under the terms of the GNU Lesser
-** General Public License version 2.1 or version 3 as published by the Free
-** Software Foundation and appearing in the file LICENSE.LGPLv21 and
-** LICENSE.LGPLv3 included in the packaging of this file. Please review the
-** following information to ensure the GNU Lesser General Public License
-** requirements will be met: https://www.gnu.org/licenses/lgpl.html and
-** http://www.gnu.org/licenses/old-licenses/lgpl-2.1.html.
-**
-** As a special exception, The Qt Company gives you certain additional
-** rights. These rights are described in The Qt Company LGPL Exception
-** version 1.1, included in the file LGPL_EXCEPTION.txt in this package.
+** General Public License version 3 as published by the Free Software
+** Foundation and appearing in the file LICENSE.LGPL3 included in the
+** packaging of this file. Please review the following information to
+** ensure the GNU Lesser General Public License version 3 requirements
+** will be met: https://www.gnu.org/licenses/lgpl-3.0.html.
 **
 ** GNU General Public License Usage
 ** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 3.0 as published by the Free Software
-** Foundation and appearing in the file LICENSE.GPL included in the
-** packaging of this file.  Please review the following information to
-** ensure the GNU General Public License version 3.0 requirements will be
-** met: http://www.gnu.org/copyleft/gpl.html.
+** General Public License version 2.0 or (at your option) the GNU General
+** Public license version 3 or any later version approved by the KDE Free
+** Qt Foundation. The licenses are as published by the Free Software
+** Foundation and appearing in the file LICENSE.GPL2 and LICENSE.GPL3
+** included in the packaging of this file. Please review the following
+** information to ensure the GNU General Public License requirements will
+** be met: https://www.gnu.org/licenses/gpl-2.0.html and
+** https://www.gnu.org/licenses/gpl-3.0.html.
 **
 ** $QT_END_LICENSE$
 **
@@ -50,11 +48,8 @@
 # include <QtCore/qsharedpointer_impl.h>
 #else
 
-QT_BEGIN_HEADER
-
 QT_BEGIN_NAMESPACE
 
-QT_MODULE(Core)
 
 // These classes are here to fool qdoc into generating a better documentation
 
@@ -72,8 +67,10 @@ public:
 
     // constructors
     QSharedPointer();
-    explicit QSharedPointer(T *ptr);
-    QSharedPointer(T *ptr, Deleter d);
+    template <typename X> explicit QSharedPointer(X *ptr);
+    template <typename X, typename Deleter> QSharedPointer(X *ptr, Deleter d);
+    QSharedPointer(std::nullptr_t);
+    template <typename Deleter> QSharedPointer(std::nullptr_t, Deleter d);
     QSharedPointer(const QSharedPointer<T> &other);
     QSharedPointer(const QWeakPointer<T> &other);
 
@@ -82,15 +79,25 @@ public:
     QSharedPointer<T> &operator=(const QSharedPointer<T> &other);
     QSharedPointer<T> &operator=(const QWeakPointer<T> &other);
 
+    void swap(QSharedPointer<T> &other);
+
     QWeakPointer<T> toWeakRef() const;
 
     void clear();
+
+    void reset();
+    void reset(T *t);
+    template <typename Deleter>
+    void reset(T *t, Deleter deleter);
 
     // casts:
     template <class X> QSharedPointer<X> staticCast() const;
     template <class X> QSharedPointer<X> dynamicCast() const;
     template <class X> QSharedPointer<X> constCast() const;
     template <class X> QSharedPointer<X> objectCast() const;
+
+    static inline QSharedPointer<T> create();
+    static inline QSharedPointer<T> create(...);
 };
 
 template <class T>
@@ -109,16 +116,27 @@ public:
 
     ~QWeakPointer();
 
-    QWeakPointer<T> operator=(const QWeakPointer<T> &other);
-    QWeakPointer<T> operator=(const QSharedPointer<T> &other);
+    QWeakPointer<T> &operator=(const QWeakPointer<T> &other);
+    QWeakPointer<T> &operator=(const QSharedPointer<T> &other);
 
     QWeakPointer(const QObject *other);
-    QWeakPointer<T> operator=(const QObject *other);
+    QWeakPointer<T> &operator=(const QObject *other);
+
+    void swap(QWeakPointer<T> &other);
 
     T *data() const;
     void clear();
 
     QSharedPointer<T> toStrongRef() const;
+    QSharedPointer<T> lock() const;
+};
+
+template <class T>
+class QEnableSharedFromThis
+{
+public:
+    QSharedPointer<T> sharedFromThis();
+    QSharedPointer<const T> sharedFromThis() const;
 };
 
 template<class T, class X> bool operator==(const QSharedPointer<T> &ptr1, const QSharedPointer<X> &ptr2);
@@ -131,6 +149,14 @@ template<class T, class X> bool operator==(const QWeakPointer<T> &ptr1, const QS
 template<class T, class X> bool operator!=(const QWeakPointer<T> &ptr1, const QSharedPointer<X> &ptr2);
 template<class T, class X> bool operator==(const QSharedPointer<T> &ptr1, const QWeakPointer<X> &ptr2);
 template<class T, class X> bool operator!=(const QSharedPointer<T> &ptr1, const QWeakPointer<X> &ptr2);
+template<class T> bool operator==(const QSharedPointer<T> &lhs, std::nullptr_t);
+template<class T> bool operator!=(const QSharedPointer<T> &lhs, std::nullptr_t);
+template<class T> bool operator==(std::nullptr_t, const QSharedPointer<T> &rhs);
+template<class T> bool operator!=(std::nullptr_t, const QSharedPointer<T> &rhs);
+template<class T> bool operator==(const QWeakPointer<T> &lhs, std::nullptr_t);
+template<class T> bool operator!=(const QWeakPointer<T> &lhs, std::nullptr_t);
+template<class T> bool operator==(std::nullptr_t, const QWeakPointer<T> &rhs);
+template<class T> bool operator!=(std::nullptr_t, const QWeakPointer<T> &rhs);
 
 template <class X, class T> QSharedPointer<X> qSharedPointerCast(const QSharedPointer<T> &other);
 template <class X, class T> QSharedPointer<X> qSharedPointerCast(const QWeakPointer<T> &other);
@@ -144,8 +170,6 @@ template <class X, class T> QSharedPointer<X> qSharedPointerObjectCast(const QWe
 template <class X, class T> QWeakPointer<X> qWeakPointerCast(const QWeakPointer<T> &src);
 
 QT_END_NAMESPACE
-
-QT_END_HEADER
 
 #endif // Q_QDOC
 

@@ -8,54 +8,53 @@
 
 #pragma once
 
-#include "Tools/RingBuffer.h"
-#include "Tools/Module/Module.h"
+#include "Representations/BehaviorControl/TeamBehaviorStatus.h"
+#include "Representations/Communication/GameInfo.h"
+#include "Representations/Communication/RobotInfo.h"
+#include "Representations/Communication/TeamData.h"
+#include "Representations/Configuration/FieldDimensions.h"
+#include "Representations/Infrastructure/CognitionStateChanges.h"
 #include "Representations/Infrastructure/FrameInfo.h"
-#include "Representations/Infrastructure/GameInfo.h"
-#include "Representations/Infrastructure/RobotInfo.h"
-#include "Representations/Modeling/RobotPose.h"
+#include "Representations/Modeling/BallModel.h"
 #include "Representations/Modeling/Odometer.h"
 #include "Representations/Modeling/OwnSideModel.h"
-#include "Representations/Perception/CameraMatrix.h"
-#include "Representations/Sensing/FallDownState.h"
-#include "Representations/Sensing/ArmContactModel.h"
+#include "Representations/Modeling/RobotPose.h"
 #include "Representations/Modeling/SideConfidence.h"
-#include "Representations/Modeling/BallModel.h"
-#include "Representations/Configuration/FieldDimensions.h"
-#include "Representations/Modeling/LocalizationTeamBall.h"
+#include "Representations/Modeling/WorldModelPrediction.h"
+#include "Representations/Perception/ImagePreprocessing/CameraMatrix.h"
+#include "Representations/Sensing/FallDownState.h"
+#include "Tools/Module/Module.h"
+#include "Tools/RingBuffer.h"
 
 MODULE(SideConfidenceProvider,
 {,
   USES(RobotPose),
-  USES(LocalizationTeamBall),
+  REQUIRES(TeamData),
   REQUIRES(OwnSideModel),
   REQUIRES(Odometer),
   REQUIRES(BallModel),
   REQUIRES(FieldDimensions),
   REQUIRES(CameraMatrix),
   REQUIRES(FallDownState),
-  REQUIRES(ArmContactModel),
   REQUIRES(FrameInfo),
   REQUIRES(GameInfo),
   REQUIRES(RobotInfo),
+  REQUIRES(WorldModelPrediction),
+  USES(TeamBehaviorStatus),
+  REQUIRES(CognitionStateChanges),
   PROVIDES(SideConfidence),
   LOADS_PARAMETERS(
   {,
-    (float) standardDeviationBallAngle,    /**< As the name says... */
-    (float) standardDeviationBallDistance, /**< As the name says... */
-    (float) weightingFactor,               /**< Multiplier for defining the minimum difference between normal and mirrored pose */
-    (float) sideConfidenceConfident,       /**< Value for side confidence when being definitely in own half */
-    (float) sideConfidenceAlmostConfident, /**< Value for side confidence when being sure about own position but not definitely in own half */
-    (float) sideConfidenceConfused,        /**< Value for side confidence when bad things have happened */
-    (float) maxBallVelocity,               /**< Maximum velocity of balls that are considered for side confidence computation */
-    (int) ballBufferingInterval,           /**< Time for keeping a local ball observation in buffer */
-    (float) armContactModificator,         /**< How much the SideConfidence is influsenced by  having arm contact */
-    (float) relativeBallDropin,            /**< The value how far the ball is dorpped in behind the robot after kicking out */
-    (int) minContinuousArmContact,         /**< The minimum time of continuous arm contact to be considered disturbing (in ms) */
     (float) centerBanZoneRadius,           /**< All balls closer to the field's center than this are ignored */
-    (float) minWeighting,                  /**< The minimum weighting an original or mirrored ball needs to have to be considered */
-    (int)   minTeammateOverride,           /**< Number of teammates that are required to override my side belief */
-    (int)   maxBufferAge,                  /**< Maximum age of a side confidence measurement to remain in the buffer */
+    (float) fieldLineBanDistance,          /**< All balls that are too close to a line or a penalty mark become ignored */
+    (float) maxBallVelocity,               /**< Maximum velocity of balls that are considered for side confidence computation */
+    (int)   maxBallAge,                    /**< Maximum age (in milliseconds) of a ball model that can be integrated */
+    (int)   agreementTimeout,              /**< Time after which an agreement is removed from the list, if it has not been updated */
+    (float) maxBallAgreementDistance,      /**< Between balls that are considerered to be "the same" should not be a distance larger than this */
+    (bool)  deactivateGoalieFlipping,      /**< If true, goalie does not set the mirror flag */
+    (bool)  goalieIsAlwaysRight,           /**< If true, (dis)agreement of the goalie is always used to decide the confidence */
+    (int)   minAgreementCount,             /**< Minimum number of required agreements for considering an agreemate */
+    (int)   jumpRemovalTimeout,            /**< If a teammate has jumped recently (or I have jumped), agreements become deleted */
   }),
 });
 
@@ -66,61 +65,47 @@ public:
   SideConfidenceProvider();
 
 private:
-  /**
-    * Provides the sideConfidence
-    */
-  void update(SideConfidence& sideConfidence);
-
-  bool lost; /** sideConfidence 0% and lost-sound played */
-  enum {BUFFER_SIZE = 12};               /**< Number of ball state observations */
-  ENUM(BallModelSideConfidence,
+  ENUM(TeammateBallCompatibility,
   {,
-    OK,
-    MIRROR,
-    UNKNOWN,
-  });                                     /**< Discrete states of confidence resulting from comparison of ball models (own vs. others) */
+    Agree,
+    Mirror,
+    Unknown,
+  });
 
-  struct SideConfidenceMeasurement
+  struct Agreemate
   {
-    BallModelSideConfidence ballConfidence;
-    unsigned timeStamp;
+    int number;
+    bool isGoalkeeper;
+    unsigned timeOfLastAgreement;
+    TeammateBallCompatibility ballCompatibility;
+    int agreementCount;
+    Vector2f lastGlobalBallPosition;  // For visualization only
   };
 
-  RingBuffer<SideConfidenceMeasurement, BUFFER_SIZE> confidenceBuffer; /**< Buffer of last confidences */
-  BallModelSideConfidence averageBallConfidence; /**< The average side confidence based on buffered confidences */
-  unsigned timeOfLastFall;               /**< Timestamp to see if the robot has fallen down */
-  unsigned lastTimeWithoutArmContact;
-  Vector2f lastBallObservation = Vector2f::Zero();         /**< Position (relative to the robot) of the last estimated ball that has actually been observed */
-  unsigned timeOfLastBallObservation;        /**< Point of time of last observation */
-  unsigned timeOfLastTeamBallObservation;    /**< Point of time of last observation of others */
-  float maxDistanceToFieldCenterForArmConsideration; /**< Just as the name says ... */
-  float maxDistanceToFieldCenterForFallDownConsideration; /**< Just as the name says ... */
+  std::vector<Agreemate> agreemates;
+
+  unsigned timeWhenLastBallReplacingSetPlayStarted = 0; /** The last timestamp when a set play started in which a ball is replaced. */
 
   /**
-    * Checks if the other team mates see the ball near the own estimated position
-    * or near its mirrored position.
-    */
-  void updateSideConfidenceFromOthers(SideConfidence& sideConfidence);
-
-  /**
-    * Updates the own confidence.
-    */
-  void updateSideConfidenceFromOwn(SideConfidence& sideConfidence);
-
-  /**
-   * Maps sideConfidence to ConfidenceState.
+   * Provides the sideConfidence
    */
-  void updateConfidenceState(SideConfidence& sideConfidence);
+  void update(SideConfidence& sideConfidence) override;
 
-  /** Updates ball confidence buffer */
-  void updateBallConfidences(SideConfidence& sideConfidence);
+  void fillRepresentation(SideConfidence& sideConfidence);
 
-  /** Combines confidence based on current ball models */
-  BallModelSideConfidence computeCurrentBallConfidence();
+  void findAgreemates();
 
-  float computeAngleWeighting(float measuredAngle, const Vector2f& modelPosition,
-    const Pose2f& robotPose, float standardDeviation) const;
+  void removeOldAndJumpedAgreemates();
 
-  float computeDistanceWeighting(float measuredDistanceAsAngle, const Vector2f& modelPosition,
-    const Pose2f& robotPose, float cameraZ, float standardDeviation) const;
+  void addToAgreemateList(const Teammate& teammate, TeammateBallCompatibility ballCompatibility);
+
+  TeammateBallCompatibility compareBallWithTeammateBall(const Vector2f& globalBallPosition,
+                                                        const Vector2f& globalBallPositionMirrored,
+                                                        const Vector2f& teammateGlobalBallPosition) const;
+
+  bool ballModelCanBeUsed(const BallModel& ballModel, const Pose2f& robotPose) const;
+
+  bool ballIsCloseToPenaltyMarkOrLine(const Vector2f& b) const;
+
+  void draw();
 };

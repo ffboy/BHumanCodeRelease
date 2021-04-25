@@ -1,12 +1,11 @@
 /**
-* @file Controller/Views/KickView/TabWidget.cpp
-*
-* Implementation of class TabWiget
-*
-* @author <a href="mailto:judy@tzi.de">Judith Müller</a>
-*/
+ * @file Controller/Views/KickView/TabWidget.cpp
+ *
+ * Implementation of class TabWiget
+ *
+ * @author <a href="mailto:judy@tzi.de">Judith Müller</a>
+ */
 
-#include <QTabWidget>
 #include <QMouseEvent>
 #include <QDragEnterEvent>
 #include <QDropEvent>
@@ -15,8 +14,7 @@
 #include <QApplication>
 #include "TabWidget.h"
 
-TabBar::TabBar(QWidget* parent)
-  : QTabBar(parent)
+TabBar::TabBar(QWidget* parent) : QTabBar(parent)
 {
   setUsesScrollButtons(true);
   setAcceptDrops(true);
@@ -41,7 +39,7 @@ void TabBar::mouseMoveEvent(QMouseEvent* event)
 
   QDrag* drag = new QDrag(this);
   QMimeData* mimeData = new QMimeData;
-  mimeData->setData("action", "tab-reordering") ;
+  mimeData->setData("action", "tab-reordering");
   drag->setMimeData(mimeData);
   drag->exec();
 }
@@ -54,9 +52,7 @@ void TabBar::dragEnterEvent(QDragEnterEvent* event)
   const QMimeData* m = event->mimeData();
   QStringList formats = m->formats();
   if(formats.contains("action") && (m->data("action") == "tab-reordering"))
-  {
     event->acceptProposedAction();
-  }
 }
 
 void TabBar::dropEvent(QDropEvent* event)
@@ -71,8 +67,7 @@ void TabBar::dropEvent(QDropEvent* event)
   event->acceptProposedAction();
 }
 
-TabWidget::TabWidget(QWidget* parent)
-  : QTabWidget(parent)
+TabWidget::TabWidget(QWidget* parent) : QTabWidget(parent)
 {
   tb = new TabBar();
   setTabBar(tb);

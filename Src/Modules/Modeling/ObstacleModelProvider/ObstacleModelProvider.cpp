@@ -8,8 +8,13 @@
  */
 
 #include "ObstacleModelProvider.h"
+#include "Tools/Debugging/Annotation.h"
+#include "Tools/Debugging/DebugDrawings.h"
 #include "Tools/Math/Angle.h"
+#include "Tools/Math/BHMath.h"
+#include "Tools/Math/Covariance.h"
 #include "Tools/Math/Transformation.h"
+#include "Tools/Modeling/Measurements.h"
 #include "Tools/Modeling/Obstacle.h"
 #include <algorithm>
 #include <limits>
@@ -17,730 +22,431 @@
 
 MAKE_MODULE(ObstacleModelProvider, modeling)
 
+#define _STOPWATCH(name, ...) STOPWATCH("ObstacleModelProvider:" #name) name(__VA_ARGS__)
+
 void ObstacleModelProvider::update(ObstacleModel& obstacleModel)
 {
+  DECLARE_DEBUG_DRAWING("module:ObstacleModelProvider:maxDistance", "drawingOnField");
+  DECLARE_DEBUG_DRAWING("module:ObstacleModelProvider:merge", "drawingOnField");
+  DECLARE_DEBUG_DRAWING("module:ObstacleModelProvider:cameraAngle", "drawingOnField");
+  DECLARE_DEBUG_DRAWING("module:ObstacleModelProvider:obstacleNotSeen", "drawingOnImage");
+
+  CIRCLE("module:ObstacleModelProvider:maxDistance", theRobotPose.translation.x(), theRobotPose.translation.y(), maxDistance, 6, Drawings::dottedPen,
+         ColorRGBA::black, Drawings::noBrush, ColorRGBA::black);
+
+  if(clearAndFinish(obstacleModel))
+    return;
+
+  _STOPWATCH(deleteObstacles); // Delete old obstacles and obstacles that are no longer hypotheses.
+  _STOPWATCH(dynamic); // Apply extended kalman filter prediction step to hypotheses.
+  _STOPWATCH(addArmContacts); // Add hypotheses measured by arm contact.
+  _STOPWATCH(addFootContacts); // Add hypotheses measured by foot contact.
+  _STOPWATCH(addPlayerPercepts); // Add players field percepts.
+  _STOPWATCH(considerTeammates); // correct whether teammate or opponent player by given pose
+  _STOPWATCH(mergeOverlapping); // Overlapping hypotheses are merged together.
+  _STOPWATCH(setLeftRight); // orthogonal obstacle.left/right
+  _STOPWATCH(shouldBeSeen); // obstacles that are obviously not present will be deleted
+  _STOPWATCH(propagateObstacles, obstacleModel); // Update obstacles fram valid hypotheses.
+
+  BH_TRACE;
+}
+
+bool ObstacleModelProvider::clearAndFinish(ObstacleModel& obstacleModel)
+{
   DEBUG_RESPONSE_ONCE("module:ObstacleModelProvider:clear")
-  {
-    iWantToBeAnObstacle.clear();
-  }
+    obstacleHypotheses.clear();
+
   if(theRobotInfo.penalty != PENALTY_NONE
      || theGameInfo.state == STATE_INITIAL
      //while falling down / getting up / the obstacles might be invalid, better clean up
-     || (theFallDownState.state == FallDownState::onGround || theFallDownState.state == FallDownState::falling)
+     || theFallDownState.state == FallDownState::falling
+     || theFallDownState.state == FallDownState::fallen
      || theMotionInfo.motion == MotionRequest::getUp
-     || theGameInfo.secondaryState == STATE2_PENALTYSHOOT) //penalty shootout -> obstacles will be ignored
+     || theGameInfo.gamePhase == GAME_PHASE_PENALTYSHOOT) //penalty shootout -> obstacles will be ignored
   {
     if(theGameInfo.state != STATE_FINISHED) //if the gamecontroller operator fails epicly and resets from finished to playing
     {
       obstacleModel.obstacles.clear();
-      iWantToBeAnObstacle.clear();
+      obstacleHypotheses.clear();
     }
-    return;
+    return true;
   }
-  STOPWATCH("ObstacleModelProvider:delete") deleteObstacles(); //delete old obstacles and obstacles that are no longer obstacles for reasons
-  STOPWATCH("ObstacleModelProvider:dynamic") dynamic(); //apply extended kalman filter prediction step to obstacles
-  if(useArmContactModel){ STOPWATCH("ObstacleModelProvider:addArm") addArmContacts(); } //whether to us the arm contact model or not
-  if(useFootContactModel){ STOPWATCH("ObstacleModelProvider:addFoot") addFootContacts(); } //whether to use the foot contact model or not
-  if(useGoalPercepts) { STOPWATCH("ObstacleModelProvider:addGoal") addGoalPercepts(); } //whether to use goal percepts or not
-  STOPWATCH("ObstacleModelProvider:addPlayers") addPlayerPercepts(); //try to merge (if not, add new obstacle) with obstacles
-  STOPWATCH("ObstacleModelProvider:considerTeammates") considerTeammates(); //correct whether teammate or opponent player by given pose
-  STOPWATCH("ObstacleModelProvider:mergeOverlapping") mergeOverlapping(); //overlapping obstacles are merged together
-  STOPWATCH("ObstacleModelProvider:shouldBeSeen") shouldBeSeen(); //obstacles that are obviously not present will be deleted
-  STOPWATCH("ObstacleModelProvider:propagate") propagateObstacles(obstacleModel); //put valid obstacles in representation
-  BH_TRACE;
-  if(obstacleModel.obstacles.size() > sizeOfObstacles)
+  return false;
+}
+
+void ObstacleModelProvider::deleteObstacles()
+{
+  for(auto obstacle = obstacleHypotheses.begin(); obstacle != obstacleHypotheses.end();)
   {
-    ANNOTATION("ObstacleModelProvider", "over " << static_cast<unsigned>(sizeOfObstacles) << " obstacles in model!");
-    sizeOfObstacles += 10;
+    const float obstacleRadius = obstacle->type == Obstacle::goalpost ? theFieldDimensions.goalPostRadius : Obstacle::getRobotDepth();
+    const float centerDistanceSquared = obstacle->center.squaredNorm();
+    if(obstacle->notSeenButShouldSeenCount >= notSeenThreshold
+       || theFrameInfo.getTimeSince(obstacle->lastSeen) >= deleteAfter
+       || centerDistanceSquared >= sqr(maxDistance)
+       || centerDistanceSquared <= sqr(obstacleRadius * .5f) //obstacle is really inside us
+       || (theCognitionStateChanges.lastGameState != STATE_PLAYING && theGameInfo.state == STATE_PLAYING && theFrameInfo.getTimeSince(obstacle->lastSeen) > 1500)
+       || obstacleIsNotOnField(*obstacle)
+       //|| obstacle->velocity.squaredNorm() > sqr(maxVelocity)  //velocity is deactivated
+      )
+    {
+      obstacle = obstacleHypotheses.erase(obstacle);
+    }
+    else
+      ++obstacle;
   }
-  if(iWantToBeAnObstacle.size() > sizeOfObstacles)
-  {
-    ANNOTATION("ObstacleModelProvider", "over " << static_cast<unsigned>(sizeOfObstacles) << " probable obstacles");
-  }
+}
+
+bool ObstacleModelProvider::obstacleIsNotOnField(const ObstacleHypothesis& obstacle) const
+{
+  Vector2f absObsPos = Transformation::robotToField(theWorldModelPrediction.robotPose, obstacle.center);
+  return theFieldDimensions.clipToField(absObsPos) > 500.f;;
+}
+
+void ObstacleModelProvider::dynamic()
+{
+  const float odometryRotation = -theOdometer.odometryOffset.rotation; //obstacle has to move in the opposite direction
+  const Vector2f odometryTranslation = -theOdometer.odometryOffset.translation.rotated(-theOdometer.odometryOffset.rotation);
+  Matrix2f odometryJacobian;
+  odometryJacobian << std::cos(odometryRotation), -std::sin(odometryRotation), std::sin(odometryRotation), std::cos(odometryRotation);
+  //noise
+  //todo add noise from rotation
+  const float odometryDeviationX = sqr(odometryTranslation.x() * odoDeviation.x());
+  const float odometryDeviationY = sqr(odometryTranslation.y() * odoDeviation.y());
+  //process noise
+  const float odometryNoiseX = sqr(pNp) + odometryDeviationX;
+  const float odometryNoiseY = sqr(pNp) + odometryDeviationY;
+
+  for(auto& obstacle : obstacleHypotheses)
+    obstacle.dynamic(odometryRotation, odometryTranslation, odometryJacobian, odometryNoiseX, odometryNoiseY);
 }
 
 void ObstacleModelProvider::addArmContacts()
 {
-  if(!theArmContactModel.contactLeft && !theArmContactModel.contactRight)
+  if(!useArmContactModel)
     return;
+
   merged.clear();
-  merged.resize(iWantToBeAnObstacle.size());
-  Vector2f center;
-  //left arm
-  if(theArmContactModel.contactLeft && theFrameInfo.getTimeSince(theArmContactModel.timeOfLastContactLeft) <= 2000)
+  merged.resize(obstacleHypotheses.size());
+
+  auto addArmContact = [&](const Arms::Arm arm)
   {
-    if(!leftArmContact)
+    if(theArmContactModel.status[arm].contact && theFrameInfo.getTimeSince(theArmContactModel.status[arm].timeOfLastContact) <= 2000)
     {
-      ANNOTATION("ObstacleModelProvider", "LeftArmContact.");
-      leftArmContact = true;
+      if(!armContact[arm])
+      {
+        ANNOTATION("ObstacleModelProvider", TypeRegistry::getEnumName(arm) << "ArmContact");
+        armContact[arm] = true;
+      }
+      Vector2f center = (theTorsoMatrix.inverse() * theRobotModel.limbs[Limbs::combine(arm, Limbs::shoulder)].translation).topRows(2);
+      center.y() += sgn(center.y()) * (Obstacle::getRobotDepth() + 15.f); // fehlt hier nicht torso inv?
+      ObstacleHypothesis obstacle(armCov, center, Vector2f::Zero(), Vector2f::Zero(), theFrameInfo.time, 1, Obstacle::unknown);
+      obstacle.setLeftRight(Obstacle::getRobotDepth());
+      //Insert valid obstacle
+      tryToMerge(obstacle);
     }
-    center = (theTorsoMatrix.inverse() * theRobotModel.limbs[Limbs::shoulderLeft].translation).topRows(2);
-    center.y() += Obstacle::getRobotDepth() + 15.f;
-    InternalObstacle obstacle = InternalObstacle(armCov, center, Vector2f::Zero(), Vector2f::Zero(), theFrameInfo.time, 1,
-                                                 Obstacle::unknown);
-    obstacle.setLeftRight(Obstacle::getRobotDepth());
-    //Insert valid obstacle
-    tryToMerge(obstacle);
-  }
-  else
-    leftArmContact = false;
-  //right arm
-  if(theArmContactModel.contactRight && theFrameInfo.getTimeSince(theArmContactModel.timeOfLastContactRight) <= 2000)
-  {
-    if(!rightArmContact)
-    {
-      ANNOTATION("ObstacleModelProvider", "RightArmContact.");
-      rightArmContact = true;
-    }
-    center = (theTorsoMatrix.inverse() * theRobotModel.limbs[Limbs::shoulderRight].translation).topRows(2);
-    center.y() -= Obstacle::getRobotDepth() + 15.f;
-    InternalObstacle obstacle = InternalObstacle(armCov, center, Vector2f::Zero(), Vector2f::Zero(), theFrameInfo.time, 1,
-                                                 Obstacle::unknown);
-    obstacle.setLeftRight(Obstacle::getRobotDepth());
-    //Insert valid obstacle
-    tryToMerge(obstacle);
-  }
-  else
-    rightArmContact = false;
+    else
+      armContact[arm] = false;
+  };
+
+  FOREACH_ENUM(Arms::Arm, arm)
+    addArmContact(arm);
 }
 
 void ObstacleModelProvider::addFootContacts()
 {
-  if(!theFootContactModel.contactLeft && !theFootContactModel.contactRight)
+  if(!useFootBumperState)
     return;
+
   merged.clear();
-  merged.resize(iWantToBeAnObstacle.size());
-  Vector2f center;
-  //left foot
-  if(theFootContactModel.contactLeft && theFrameInfo.getTimeSince(theFootContactModel.lastContactLeft) <= 2000)
+  merged.resize(obstacleHypotheses.size());
+
+  auto addFootBumper = [&](const Legs::Leg leg)
   {
-    if(!leftFootContact)
+    if(theFootBumperState.status[leg].contact && theFrameInfo.getTimeSince(theFootBumperState.status[leg].lastContact) <= 2000)
     {
-      ANNOTATION("ObstacleModelProvider", "LeftFootContact.");
-      leftFootContact = true;
+      if(!footContact[leg])
+      {
+        ANNOTATION("ObstacleModelProvider", TypeRegistry::getEnumName(leg) << "FootContact.");
+        footContact[leg] = true;
+      }
+      Vector2f center = (theTorsoMatrix.inverse() * theRobotModel.limbs[Limbs::combine(leg, Limbs::foot)].translation).topRows(2);
+      center.x() += Obstacle::getRobotDepth() + 65.f + 15.f; //65mm should be the distance from the joint to the toe 65mm is the distance between the bumper and the joint
+      ObstacleHypothesis obstacle(feetCov, center, Vector2f::Zero(), Vector2f::Zero(), theFrameInfo.time, 1, Obstacle::unknown);
+      obstacle.setLeftRight(Obstacle::getRobotDepth());
+      //Insert valid obstacle
+      tryToMerge(obstacle);
     }
-    center = (theTorsoMatrix.inverse() * theRobotModel.limbs[Limbs::footLeft].translation).topRows(2);
-    center.x() += Obstacle::getRobotDepth() + 65.f + 15.f; //65mm should be the distance from the joint to the toe
-    //65mm is the distance between the bumper and the joint
-    InternalObstacle obstacle = InternalObstacle(feetCov, center, Vector2f::Zero(), Vector2f::Zero(), theFrameInfo.time,
-                                                 1, Obstacle::unknown);
-    obstacle.setLeftRight(Obstacle::getRobotDepth());
-    //Insert valid obstacle
-    tryToMerge(obstacle);
-  }
-  else
-    leftFootContact = false;
-  //right foot
-  if(theFootContactModel.contactRight && theFrameInfo.getTimeSince(theFootContactModel.lastContactRight) <= 2000)
-  {
-    if(!rightFootContact)
-    {
-      ANNOTATION("ObstacleModelProvider", "RightFootContact.");
-      rightFootContact = true;
-    }
-    center = (theTorsoMatrix.inverse() * theRobotModel.limbs[Limbs::footRight].translation).topRows(2);
-    center.x() += Obstacle::getRobotDepth() + 65.f + 15.f;//65mm should be the distance from the joint to the toe
-    //65mm is the distance between the bumper and the joint
-    InternalObstacle obstacle = InternalObstacle(feetCov, center, Vector2f::Zero(), Vector2f::Zero(), theFrameInfo.time,
-                                                 1, Obstacle::unknown);
-    obstacle.setLeftRight(Obstacle::getRobotDepth());
-    //Insert valid obstacle
-    tryToMerge(obstacle);
-  }
-  else
-    rightFootContact = false;
+    else
+      footContact[leg] = false;
+  };
+
+  FOREACH_ENUM(Legs::Leg, leg)
+    addFootBumper(leg);
 }
 
 void ObstacleModelProvider::addPlayerPercepts()
 {
-  if(thePlayersPercept.players.empty())
+  if(theObstaclesFieldPercept.obstacles.empty())
     return;
-  merged.clear();
-  merged.resize(iWantToBeAnObstacle.size());
-  for(const auto& percept : thePlayersPercept.players)
-  {
-    if(!percept.detectedFeet)
-      continue;
 
-    if(useGoalPercepts)
-    {
-      const Vector2f correctedImageCoordinates = theImageCoordinateSystem.toCorrected(Vector2i(percept.realCenterX, percept.y2));
-      //ignore percepts that are (probably) goal posts
-      bool drop = false;
-      for(const auto& goalPost : theGoalPercept.goalPosts)
-      {
-        if(std::abs(goalPost.positionInImage.x() - static_cast<int>(correctedImageCoordinates.x())) <= playersPerceptGoalPerceptdiff &&
-           goalPost.positionInImage.y() >= correctedImageCoordinates.y())
-        {
-          drop = true;
-          break;
-        }
-      }
-      if(drop)
-        continue;
-    }
-    if(percept.centerOnField.squaredNorm() >= MAX_DIST_ON_FIELD2 || percept.centerOnField.squaredNorm() >= sqr(maxDistance))
+  merged.clear();
+  merged.resize(obstacleHypotheses.size());
+
+  const Vector2f& robotRotationDeviation = theMotionInfo.isStanding() ? pRobotRotationDeviationInStand : pRobotRotationDeviation;
+
+  for(const auto& percept : theObstaclesFieldPercept.obstacles)
+  {
+    if(percept.center.squaredNorm() >= sqr(maxDistance))
       continue;
 
     Obstacle::Type t = Obstacle::someRobot;
-    /*ignoreJersey HACK, please remove after RoboCup*/
-    bool ignoreJersey = (theCameraInfo.camera == CameraInfo::lower && ignoreJerseyLowerCam && percept.lowerCamera)
-      || (theCameraInfo.camera == CameraInfo::upper && ignoreJerseyUpperCam && !percept.lowerCamera);
-    if(percept.detectedJersey && !percept.ownTeam && !ignoreJersey)
-    {
-      if(percept.fallen)
-      {
-        t = Obstacle::fallenOpponent;
-      }
-      else
-      {
-        t = Obstacle::opponent;
-      }
-    }
-    else if(percept.detectedJersey && !ignoreJersey) //ignoreJersey HACK, please remove after RoboCup/
-    {
-      if(percept.fallen)
-      {
-        t = Obstacle::fallenTeammate;
-      }
-      else
-      {
-        t = Obstacle::teammate;
-      }
-    }
+    if(percept.type == ObstaclesFieldPercept::opponentPlayer)
+      t = percept.fallen ? Obstacle::fallenOpponent : Obstacle::opponent;
+    else if(percept.type == ObstaclesFieldPercept::ownPlayer)
+      t = percept.fallen ? Obstacle::fallenTeammate : Obstacle::teammate;
     else if(percept.fallen)
-    {
       t = Obstacle::fallenSomeRobot;
-    }
-    InternalObstacle obstacle(getCovOfPointInWorld(percept.centerOnField), percept.centerOnField,
-                     percept.leftOnField.normalized(percept.leftOnField.norm() + Obstacle::getRobotDepth()),
-                     percept.rightOnField.normalized(percept.rightOnField.norm() + Obstacle::getRobotDepth()), theFrameInfo.time, 1, t);
+
+    const Matrix2f cov = Measurements::positionToCovarianceMatrixInRobotCoordinates(percept.center, 0.f, theCameraMatrix, theCameraMatrix.inverse(), robotRotationDeviation);
+    ObstacleHypothesis obstacle(cov, percept.center,
+                                percept.left.normalized(percept.left.norm() + Obstacle::getRobotDepth()),
+                                percept.right.normalized(percept.right.norm() + Obstacle::getRobotDepth()), theFrameInfo.time, 1, t);
     if((obstacle.left - obstacle.right).squaredNorm() < sqr(2 * Obstacle::getRobotDepth()))
       obstacle.setLeftRight(Obstacle::getRobotDepth());
     tryToMerge(obstacle);
   }
 }
 
-void ObstacleModelProvider::dynamic()
+void ObstacleModelProvider::tryToMerge(const ObstacleHypothesis& measurement)
 {
-  for(auto& obstacle : iWantToBeAnObstacle)
+  if(obstacleHypotheses.empty())
   {
-    dynamic(obstacle);
-  }
-}
-
-void ObstacleModelProvider::deleteObstacles()
-{
-  if(iWantToBeAnObstacle.empty())
-    return;
-  if(useGoalPercepts)
-  {
-    //Sort out some goals
-    for(size_t i = 0; i < iWantToBeAnObstacle.size(); ++i)
-    {
-      for(size_t j = iWantToBeAnObstacle.size() - 1; j > i; --j)
-      {
-        if(iWantToBeAnObstacle[i].type == Obstacle::goalpost &&
-           iWantToBeAnObstacle[j].type == Obstacle::goalpost)
-        {
-          //now make sure, there are only four goal posts
-          //closest goal percept to an goal post should be the best candidate to merge
-          //big distances between goals indicate to different goals
-          //merge somewhat plausible goal posts
-          const float distance = (iWantToBeAnObstacle[i].center - iWantToBeAnObstacle[j].center).squaredNorm();
-          const float angle = std::abs(Angle::normalize(iWantToBeAnObstacle[i].center.angle() - iWantToBeAnObstacle[j].center.angle())); //should be less than maxAngle
-          if(distance <= maxGoalToGoalDistSqr && angle < maxGoalAngle && iWantToBeAnObstacle[i].seenCount >= iWantToBeAnObstacle[j].seenCount)
-          {
-            Obstacle::fusion2D(iWantToBeAnObstacle[i], iWantToBeAnObstacle[j]);
-            iWantToBeAnObstacle[i].setLeftRight(theFieldDimensions.goalPostRadius);
-            considerType(iWantToBeAnObstacle[i], iWantToBeAnObstacle[j]);
-            iWantToBeAnObstacle.erase(iWantToBeAnObstacle.begin() + j);
-          }
-          //else if(squaredDistance > lowerDistOtherGoalSqr)// && distance < upperDistOtherGoal)
-          //{
-          //  continue; //probably a different goal post
-          //}
-          //else
-          //{
-          //  //OUTPUT_TEXT("dist: " << distance << " angle: " << angle); //debugoutput
-          //  iWantToBeAnObstacle.erase(iWantToBeAnObstacle.begin() + j);
-          //}
-          /*
-          else if(distance > maxGoalToGoalDist && distance <= theFieldDimensions.xPosOpponentGroundline && angle < maxAngle && obstacle->seenCount >= otherObstacle->seenCount)
-          {
-          otherObstacle = iWantToBeAnObstacle.erase(otherObstacle);
-          if(otherObstacle < obstacle)
-          --obstacle;
-          }*/
-        }
-      }
-    }
-  }
-  for(auto obstacle = iWantToBeAnObstacle.begin(); obstacle != iWantToBeAnObstacle.end();)
-  {
-    //ASSERT(obstacle->seenCount <= maxPercepts);
-    //Decrease seencount once per second (if lastMeasurement is one second old)
-    //if(theCameraInfo.camera && obstacle->seenCount >= 1 && (obstacle->lastMeasurement + 1000) <= theFrameInfo.time)
-    //{
-    //  --obstacle->seenCount;
-    //  obstacle->lastMeasurement = theFrameInfo.time;
-    //}
-    const float centerDistance = obstacle->center.squaredNorm();
-    if(obstacle->notSeenButShouldSeenCount >= notSeenThreshold ||
-       obstacle->lastMeasurement + deleteAfter <= theFrameInfo.time ||
-       centerDistance >= MAX_DIST_ON_FIELD2 || centerDistance >= sqr(maxDistance) ||
-       (std::abs(centerDistance) <= sqr(Obstacle::getRobotDepth() / 2.f)) || //obstacle is really inside us
-       obstacle->velocity.squaredNorm() > sqr(maxVelocity)
-      )
-    {
-      obstacle = iWantToBeAnObstacle.erase(obstacle);
-    }
-    else
-    {
-      ++obstacle;
-    }
-  }
-}
-
-void ObstacleModelProvider::addGoalPercepts()
-{
-  if(theGoalPercept.goalPosts.empty())
-    return;
-  merged.clear();
-  merged.resize(iWantToBeAnObstacle.size());
-  for(const auto& goalPost : theGoalPercept.goalPosts)
-  {
-    if(goalPost.positionOnField.squaredNorm() >= MAX_DIST_ON_FIELD2 || goalPost.positionOnField.squaredNorm() >= sqr(maxDistance))
-      continue;
-    unsigned confidence = 1;
-    if(theGoalPercept.timeWhenCompleteGoalLastSeen == theFrameInfo.time)
-    {
-      confidence = minPercepts;
-    }
-    InternalObstacle obstacle = InternalObstacle(getCovOfPointInWorld(goalPost.positionOnField), goalPost.positionOnField, Vector2f::Zero(),
-                                                 Vector2f::Zero(), theFrameInfo.time, confidence, Obstacle::goalpost);
-    obstacle.setLeftRight(theFieldDimensions.goalPostRadius);
-    tryToMerge(obstacle);
-  }
-}
-
-Matrix2f ObstacleModelProvider::getCovOfPointInWorld(const Vector2f& pointInWorld2) const
-{
-  Vector3f point3D;
-  point3D << pointInWorld2, 0.f;
-  const Vector3f unscaledVectorToPoint = theCameraMatrix.inverse() * point3D;
-  const Vector3f unscaledWorld = theCameraMatrix.rotation * unscaledVectorToPoint;
-  const float scale = theCameraMatrix.translation.z() / -unscaledWorld.z();
-  const Vector2f pointInWorld(unscaledWorld.x() * scale, unscaledWorld.y() * scale);
-  const float distance = pointInWorld.norm();
-  Vector2f cossin;
-  if(distance == 0.f)
-  {
-    ANNOTATION("ObstacleModelProvider", "distance is zero");
-    cossin << 1.f, 0.f;
-  }
-  else
-  {
-    cossin = pointInWorld * (1.f / distance);
-  }
-  Matrix2f rot;
-  rot << cossin.x(), -cossin.y(), cossin.y(), cossin.x();
-  const Vector2f& robotRotationDeviation = (theMotionInfo.motion == MotionRequest::stand ||
-      (theMotionInfo.motion == MotionRequest::specialAction && theMotionInfo.specialActionRequest.specialAction == SpecialActionRequest::standHigh))
-      ? pRobotRotationDeviationInStand : pRobotRotationDeviation;
-  Matrix2f cov;
-  cov << sqr(theCameraMatrix.translation.z() / std::tan((distance == 0.f ? pi_2 : std::atan(theCameraMatrix.translation.z() / distance))
-             - robotRotationDeviation.x()) - distance), 0.f,
-             0.f, sqr(std::tan(robotRotationDeviation.y()) * distance);
-  const Matrix2f result = rot * cov * rot.transpose();
-  return result;
-}
-
-void ObstacleModelProvider::propagateObstacles(ObstacleModel& obstacleModel) const
-{
-  obstacleModel.obstacles.clear();
-  for(const auto& ob : iWantToBeAnObstacle)
-  {
-    if(ob.seenCount >= minPercepts || debug)
-      obstacleModel.obstacles.emplace_back(ob);
-  }
-}
-
-void ObstacleModelProvider::tryToMerge(const InternalObstacle& measurement)
-{
-  if(iWantToBeAnObstacle.empty())
-  {
-    iWantToBeAnObstacle.emplace_back(measurement);
+    obstacleHypotheses.emplace_back(measurement);
     merged.push_back(true);
     return;
   }
-  float distance = 0.f;
-  const float thisMergeDistance = measurement.type == Obstacle::goalpost ? goalMergeDistanceSqr : mergeDistanceSqr;
-  float possibleMergeDist = MAX_DIST_ON_FIELD2;
+  float distanceSquared = 0.f;
+  const float thisMergeDistance = measurement.type == Obstacle::goalpost ? goalMergeDistance : mergeDistance;
+  const float mergeBonsu = measurement.center.norm() / 1000.f; // Removed square. A.H.
+  // This is the old formula. I do not like it and it leads to "obstacle spraying". T.L.
+  //const float robotDepths = (mergeBonsu >= 2.f && mergeBonsu <= 6.f ? std::floor(mergeBonsu) : 0.f) * Obstacle::getRobotDepth(); //for every meter there is a bonus of a robot radius in mm
+  // Improved formula. This is not a solution but appears to work much better on the robots. T.L.
+  const float robotDepths = (mergeBonsu >= 1.5f ? mergeBonsu : 0.f) * Obstacle::getRobotDepth() * 2.5f; //for every meter there is a bonus of 2.5 robot radii in mm
+
+  float possibleMergeDistSquared = std::numeric_limits<float>::max();
   size_t atMerge = 0; //element matching the merge condition
-  size_t noEKF = std::numeric_limits<size_t>::max(); //hopefully, this is not reached
-  for(size_t i = 0; i < iWantToBeAnObstacle.size(); ++i)
+  for(size_t i = 0; i < obstacleHypotheses.size(); ++i)
   {
     if(merged[i])
       continue;
-    const float mergeBonsu = 0;// measurement.center.norm() / 1000.f * Obstacle::getRobotDepth(); //for every meter there is a bonus of one robot depth (due to noise)
-    distance = (measurement.center - iWantToBeAnObstacle[i].center).squaredNorm();
-    if(distance <= thisMergeDistance + sqr(mergeBonsu)) //found probably matching obstacle
-    {
-      if(useGoalPercepts && iWantToBeAnObstacle[i].type == Obstacle::goalpost && measurement.type != Obstacle::goalpost)
-      {
-        if(distance >= minimalDistancetoGoalpostSqr) //measured (maybe) a robot
-          continue;
 
-        //no EKF, old goalpercepts are more trustworthy.
-        //maybe the goal frame was measured
-        noEKF = i;
-      }
-      if(distance <= possibleMergeDist)
-      {
-        possibleMergeDist = distance;
-        atMerge = i;
-      }
+    const float mergeDistanceSquared = sqr(robotDepths + thisMergeDistance);
+
+    distanceSquared = (measurement.center - obstacleHypotheses[i].center).squaredNorm();
+    if(distanceSquared <= mergeDistanceSquared && distanceSquared <= possibleMergeDistSquared) //found probably matching obstacle
+    {
+      possibleMergeDistSquared = distanceSquared;
+      atMerge = i;
     }
   }
 
-  if(possibleMergeDist < MAX_DIST_ON_FIELD2)
+  if(possibleMergeDistSquared < std::numeric_limits<float>::max())
   {
-    if(noEKF != atMerge)
-    {
-      ObstacleModelProvider::measurement(iWantToBeAnObstacle[atMerge], measurement); //EKF
-    }
-    considerType(iWantToBeAnObstacle[atMerge], measurement);
-    iWantToBeAnObstacle[atMerge].seenCount += measurement.seenCount;
-    iWantToBeAnObstacle[atMerge].notSeenButShouldSeenCount -= iWantToBeAnObstacle[atMerge].notSeenButShouldSeenCount > 0 ? 1 : 0;
+    LINE("module:ObstacleModelProvider:merge", measurement.center.x(), measurement.center.y(),
+         obstacleHypotheses[atMerge].center.x(), obstacleHypotheses[atMerge].center.y(), 10, Drawings::dashedPen, ColorRGBA::red);
+    obstacleHypotheses[atMerge].measurement(measurement, weightedSum, theFieldDimensions); //EKF
+    obstacleHypotheses[atMerge].considerType(measurement, colorThreshold, uprightThreshold);
+    obstacleHypotheses[atMerge].lastSeen = measurement.lastSeen;
+    obstacleHypotheses[atMerge].seenCount += measurement.seenCount;
+    obstacleHypotheses[atMerge].notSeenButShouldSeenCount = 0; //reset that counter
     merged[atMerge] = true;
     return;
   }
   //did not found possible match
-  iWantToBeAnObstacle.emplace_back(measurement);
+  obstacleHypotheses.emplace_back(measurement);
   merged.push_back(true);
-}
-
-void ObstacleModelProvider::dynamic(InternalObstacle& obstacle)
-{
-  float thisPNv2 = sqr(pNv);
-  //update the state
-  const float rot = -theOdometer.odometryOffset.rotation; //obstacle has to move in the opposite direction
-  const Vector2f translation = theOdometer.odometryOffset.translation * -1.f;
-  obstacle.center.rotate(rot);
-  obstacle.left.rotate(rot);
-  obstacle.right.rotate(rot);
-  //create jacobian
-  Matrix2f jacobian;
-  /*jacobian << std::cos(rot), -std::sin(rot), theFrameInfo.cycleTime, 0.f,
-              std::sin(rot), std::cos(rot), 0.f, theFrameInfo.cycleTime,
-              0.f, 0.f, std::cos(rot), -std::sin(rot),
-              0.f, 0.f, std::sin(rot), std::cos(rot);*/
-  jacobian << std::cos(rot), -std::sin(rot), std::sin(rot), std::cos(rot);
-  //if(obstacle.type == Obstacle::goalpost || obstacle.type == Obstacle::unknown)
-  {
-    obstacle.velocity.setZero();
-    obstacle.center += translation;
-    obstacle.left += translation;
-    obstacle.right += translation;
-    thisPNv2 = 0.f;
-  }
-  /*else
-  {
-  obstacle.velocity.setZero();// rotate(rot);
-  obstacle.center += translation + obstacle.velocity * theFrameInfo.cycleTime;
-  obstacle.left += translation + obstacle.velocity * theFrameInfo.cycleTime;
-  obstacle.right += translation + obstacle.velocity * theFrameInfo.cycleTime;
-  }*/
-  //noise
-  //todo add noise from rotation
-  const float odometryDeviationX = sqr(translation.x() * odoDeviation.x());
-  const float odometryDeviationY = sqr(translation.y() * odoDeviation.y());
-  Matrix2f noise;
-  noise << sqr(pNp) + odometryDeviationX, 0.f,// 0.f, 0.f,
-    0.f, sqr(pNp) + odometryDeviationY;// , 0.f, 0.f,
-  //0.f, 0.f, thisPNv2 + odometryDeviationX, 0.f,
-  //0.f, 0.f, 0.f, thisPNv2 + odometryDeviationY;
-  //process new covariance matrix
-  obstacle.covariance = jacobian * obstacle.covariance * jacobian.transpose() + noise;
-}
-
-void ObstacleModelProvider::measurement(InternalObstacle& obstacle, const InternalObstacle& measurement)
-{
-  //jacobian matrix
-  Matrix2f jacobian;
-  jacobian << 1.f, 0.f,// 0.f, 0.f,
-           0.f, 1.f;// , 0.f, 0.f;
-
-  //coariance matrices
-  //computation of kalman gain, new state and covariance matrix
-  //here: unreadable but eigen efficient
-  Matrix2f CXZ = obstacle.covariance * jacobian.transpose();
-  Matrix2f CZZ = measurement.covariance; //...+CovZ
-  CZZ.noalias() += jacobian * CXZ;
-  Matrix2f K = CXZ * CZZ.inverse();
-  Vector2f muX;
-  muX << obstacle.center;// , obstacle.velocity;
-  muX.noalias() += K * (measurement.center - obstacle.center);
-  obstacle.covariance -= K * jacobian * obstacle.covariance;
-
-  obstacle.center << muX(0), muX(1);
-
-  if(obstacle.type == Obstacle::goalpost)
-    obstacle.setLeftRight(theFieldDimensions.goalPostRadius);
-  else
-  {
-    obstacle.left = measurement.left;
-    obstacle.right = measurement.right;
-  }
-
-  //  if(obstacle.type != Obstacle::goalpost && obstacle.type != Obstacle::unknown)
-  //    obstacle.velocity;// << muX(2), muX(3);
-}
-
-void ObstacleModelProvider::considerType(InternalObstacle& obstacle, const InternalObstacle& measurement)
-{
-  obstacle.lastMeasurement = std::max(obstacle.lastMeasurement, measurement.lastMeasurement);
-  obstacle.seenCount = std::max(measurement.seenCount, obstacle.seenCount);
-  obstacle.notSeenButShouldSeenCount = std::max(measurement.notSeenButShouldSeenCount, obstacle.notSeenButShouldSeenCount);
-  obstacle.color = std::min(colorThreshold * colorThreshold, std::max(measurement.color + obstacle.color, -colorThreshold * colorThreshold));
-  obstacle.upright = std::min(2 * uprightThreshold, std::max(measurement.upright + obstacle.upright, -2 * uprightThreshold)); //'2' seems to be chosen wisely
-
-  if(obstacle.type == measurement.type || measurement.type == Obstacle::unknown)
-    return;
-  if(obstacle.type == Obstacle::unknown)
-  {
-    obstacle.type = measurement.type;
-    return;
-  }
-  if(obstacle.type == Obstacle::goalpost)
-    return;
-  if(measurement.type == Obstacle::goalpost)
-  {
-    obstacle.type = Obstacle::goalpost;
-    return;
-  }
-
-  //the following code should perfectly consider whether a robot is fallen/upright and if it's an oppponent or teammate
-  if(obstacle.color < colorThreshold && obstacle.color > -colorThreshold)
-  {
-    if(obstacle.upright <= -uprightThreshold)
-    {
-      obstacle.type = Obstacle::fallenSomeRobot;
-      return;
-    }
-    obstacle.type = Obstacle::someRobot;
-    return;
-  }
-
-  if(obstacle.color >= colorThreshold)
-  {
-    if(obstacle.upright <= -uprightThreshold)
-    {
-      obstacle.type = Obstacle::fallenOpponent;
-      return;
-    }
-    obstacle.type = Obstacle::opponent;
-    return;
-  }
-  else
-  {
-    if(obstacle.upright <= -uprightThreshold)
-    {
-      obstacle.type = Obstacle::fallenTeammate;
-      return;
-    }
-    obstacle.type = Obstacle::teammate;
-    return;
-  }
-}
-
-void ObstacleModelProvider::mergeOverlapping()
-{
-  if(iWantToBeAnObstacle.size() < 2)
-    return;
-  //const float overlap = sqr(2 * Obstacle::getRobotDepth());
-  for(size_t i = 0; i < iWantToBeAnObstacle.size(); ++i)
-  {
-    for(size_t j = iWantToBeAnObstacle.size() - 1; j > i; --j)
-    {
-      //seen in this frame (obviously should not merged) and due to oscillating obstacles should also not merged
-      if((iWantToBeAnObstacle[i].lastMeasurement == theFrameInfo.time && iWantToBeAnObstacle[j].lastMeasurement == theFrameInfo.time)
-         || (std::max(iWantToBeAnObstacle[i].lastMeasurement, iWantToBeAnObstacle[j].lastMeasurement) - std::min(iWantToBeAnObstacle[i].lastMeasurement, iWantToBeAnObstacle[j].lastMeasurement) < mergeOverlapTimeDiff))
-         continue;
-      const float overlap = ((iWantToBeAnObstacle[i].left - iWantToBeAnObstacle[i].right) / 2.f).squaredNorm() + ((iWantToBeAnObstacle[j].left - iWantToBeAnObstacle[j].right) / 2.f).squaredNorm();
-      if(((iWantToBeAnObstacle[j].center - iWantToBeAnObstacle[i].center).squaredNorm() <= overlap &&
-          ((iWantToBeAnObstacle[i].type >= Obstacle::unknown && iWantToBeAnObstacle[j].type >= Obstacle::unknown)
-           || iWantToBeAnObstacle[i].type == iWantToBeAnObstacle[j].type)) /*the following should eliminate obstacles overlapping with goalposts */
-         || (useGoalPercepts &&
-            (iWantToBeAnObstacle[j].center - iWantToBeAnObstacle[i].center).squaredNorm() <= minimalDistancetoGoalpostSqr &&
-            (iWantToBeAnObstacle[i].type >= Obstacle::goalpost && iWantToBeAnObstacle[j].type >= Obstacle::goalpost)))
-      {
-        //fusion4D(iWantToBeAnObstacle[i], iWantToBeAnObstacle[j]);
-        Obstacle::fusion2D(iWantToBeAnObstacle[i], iWantToBeAnObstacle[j]);
-        if(iWantToBeAnObstacle[i].type == Obstacle::goalpost)
-          iWantToBeAnObstacle[i].setLeftRight(theFieldDimensions.goalPostRadius);
-        considerType(iWantToBeAnObstacle[i], iWantToBeAnObstacle[j]);
-        iWantToBeAnObstacle.erase(iWantToBeAnObstacle.begin() + j);
-      }
-    }
-  }
 }
 
 void ObstacleModelProvider::considerTeammates()
 {
-  DECLARE_DEBUG_DRAWING("module:ObstacleModelProvider:Teammates", "drawingOnField");
+  DECLARE_DEBUG_DRAWING("module:ObstacleModelProvider:teammates", "drawingOnField");
+  if(!useTeammatePositionForClassification)
+    return;
+
   //don't risk false classification if no communication is possibles
-  if(iWantToBeAnObstacle.empty() || theTeammateData.teammates.empty())
+  if(obstacleHypotheses.empty() || theTeamData.teammates.empty())
     return;
 
   size_t neverSeen = 0; //maybe never seen teammates
 
   std::set<size_t> mergedTeammates;
-  for(const auto& teammate : theTeammateData.teammates)
+  for(const auto& teammate : theTeamData.teammates)
   {
-    if(teammate.status != Teammate::FULLY_ACTIVE)
+    if(teammate.status != Teammate::PLAYING)
       continue;
 
-    const Matrix2f cov = teammate.pose.covariance.topLeftCorner(2, 2);
-    const Vector2f relativePosition = theRobotPose.inverse() * teammate.pose.translation;
-    CIRCLE("module:ObstacleModelProvider:Teammates", relativePosition.x(), relativePosition.y(), 100, 3, Drawings::dottedPen, ColorRGBA::black, Drawings::noBrush, ColorRGBA::yellow);
+    const Matrix2f cov = teammate.theRobotPose.covariance.topLeftCorner(2, 2);
+    ASSERT(cov(0, 1) == cov(1, 0));
+    const Vector2f relativePosition = theRobotPose.inversePose * teammate.theRobotPose.translation;
+    CIRCLE("module:ObstacleModelProvider:teammates", teammate.theRobotPose.translation.x(), teammate.theRobotPose.translation.y(), 100, 3, Drawings::dottedPen, ColorRGBA::black, Drawings::noBrush, ColorRGBA::yellow);
     if(relativePosition.squaredNorm() > sqr(maxDistance))
     {
       ++neverSeen;
       continue;
     }
-    InternalObstacle measurement(cov, relativePosition, Vector2f::Zero(), Vector2f::Zero(),
-                                          teammate.timeWhenLastPacketReceived, minPercepts / 2,
-                                          Obstacle::teammate);
+    ObstacleHypothesis measurement(cov, relativePosition, Vector2f::Zero(), Vector2f::Zero(),
+                                   teammate.timeWhenLastPacketReceived, minPercepts / 2,
+                                   Obstacle::teammate);
     measurement.setLeftRight(Obstacle::getRobotDepth());
     //if the teammate is found in the local obstacle model, one would like to make sure, it is not classified as an opponent
     measurement.color = (colorThreshold / 2) * sgn(measurement.color);
-    float distance = 0.f;
-    float possibleMergeDist = MAX_DIST_ON_FIELD2;
+    float distanceSquared = 0.f;
+    float possibleMergeDistSquared = std::numeric_limits<float>::max();
     size_t atMerge = 0; //element matching the merge condition
-    for(size_t i = 0; i < iWantToBeAnObstacle.size(); ++i)
+    for(size_t i = 0; i < obstacleHypotheses.size(); ++i)
     {
       if(mergedTeammates.find(i) != mergedTeammates.end())
         continue;
-      /*if(iWantToBeAnObstacle[i].type < Obstacle::unknown)
-        continue;*/
-      const float mergeBonsu = (measurement.center.squaredNorm() / sqr(1000.f)) * Obstacle::getRobotDepth(); //for every meter there is a bonus of robot radius in mm
-      distance = (measurement.center - iWantToBeAnObstacle[i].center).squaredNorm();
-      if(distance <= mergeDistanceSqr + mergeBonsu && distance <= possibleMergeDist) //found probably matching obstacle
+      const float mergeBonsu = measurement.center.norm() / 1000.f;
+      const float robotDepths = (mergeBonsu >= 1.5f ? mergeBonsu : 0.f) * Obstacle::getRobotDepth() * 2.5f; //for every meter there is a bonus of 2.5 robot radii in mm
+      const float mergeDistanceSquared = sqr(robotDepths + mergeDistance);
+      distanceSquared = (measurement.center - obstacleHypotheses[i].center).squaredNorm();
+      if(distanceSquared <= mergeDistanceSquared && distanceSquared <= possibleMergeDistSquared) //found probably matching obstacle
       {
-        possibleMergeDist = distance;
+        possibleMergeDistSquared = distanceSquared;
         atMerge = i;
       }
     }
-    if(possibleMergeDist < MAX_DIST_ON_FIELD2)
+    if(possibleMergeDistSquared < std::numeric_limits<float>::max())
     {
-      considerType(iWantToBeAnObstacle[atMerge], measurement);
+      obstacleHypotheses[atMerge].considerType(measurement, colorThreshold, uprightThreshold);
+      obstacleHypotheses[atMerge].lastSeen = theFrameInfo.time;
       mergedTeammates.insert(atMerge);
     }
-    else if(relativePosition.x() < -300.f || distance > maxDistance) //magic number; teammate is behind me or too far away
+    else if(relativePosition.x() < -300.f || distanceSquared > sqr(maxDistance)) //magic number; teammate is behind me or too far away
       ++neverSeen;
   }
   //found all my teammates? other robots should be in the other team
-  if(mergedTeammates.size() + neverSeen != theTeammateData.teammates.size())
+  if(mergedTeammates.size() + neverSeen != theTeamData.teammates.size())
     return;
-  InternalObstacle opponent(Obstacle::opponent);
-  for(size_t i = 0; i < iWantToBeAnObstacle.size(); ++i)
+  ObstacleHypothesis opponent(Obstacle::opponent);
+  opponent.upright = 0;
+  for(size_t i = 0; i < obstacleHypotheses.size(); ++i)
   {
     if(mergedTeammates.find(i) != mergedTeammates.end())
     {
       mergedTeammates.erase(i);
       continue;
     }
-    if(iWantToBeAnObstacle[i].type > Obstacle::unknown)
-      considerType(iWantToBeAnObstacle[i], opponent);
+    if(obstacleHypotheses[i].type > Obstacle::unknown)
+      obstacleHypotheses[i].considerType(opponent, colorThreshold, uprightThreshold);
   }
+}
+
+void ObstacleModelProvider::mergeOverlapping()
+{
+  if(obstacleHypotheses.size() < 2)
+    return;
+
+  for(size_t i = 0; i < obstacleHypotheses.size(); ++i)
+  {
+    for(size_t j = obstacleHypotheses.size() - 1; j > i; --j)
+    {
+      // obstacles that have been seen too close on the time axis should not be merged (for whatever reasons)
+      if(std::max(obstacleHypotheses[i].lastSeen, obstacleHypotheses[j].lastSeen) - std::min(obstacleHypotheses[i].lastSeen, obstacleHypotheses[j].lastSeen) < mergeOverlapTimeDiff)
+        continue;
+
+      const float overlapSquared = ((obstacleHypotheses[i].left - obstacleHypotheses[i].right) * .5f).squaredNorm() + ((obstacleHypotheses[j].left - obstacleHypotheses[j].right) * .5f).squaredNorm();
+      const float distanceOfCentersSquared = (obstacleHypotheses[j].center - obstacleHypotheses[i].center).squaredNorm();
+      if((distanceOfCentersSquared <= overlapSquared || distanceOfCentersSquared < sqr(2 * Obstacle::getRobotDepth())) &&
+         ((obstacleHypotheses[i].type >= Obstacle::unknown && obstacleHypotheses[j].type >= Obstacle::unknown)
+          || obstacleHypotheses[i].type == obstacleHypotheses[j].type))
+      {
+        Obstacle::fusion2D(obstacleHypotheses[i], obstacleHypotheses[j]);
+        if(obstacleHypotheses[i].type == Obstacle::goalpost)
+          obstacleHypotheses[i].setLeftRight(theFieldDimensions.goalPostRadius);
+        obstacleHypotheses[i].considerType(obstacleHypotheses[j], colorThreshold, uprightThreshold);
+        obstacleHypotheses[i].lastSeen = std::max(obstacleHypotheses[i].lastSeen, obstacleHypotheses[j].lastSeen);
+        obstacleHypotheses[i].seenCount = std::max(obstacleHypotheses[i].seenCount, obstacleHypotheses[j].seenCount);
+        obstacleHypotheses[i].notSeenButShouldSeenCount = obstacleHypotheses[i].notSeenButShouldSeenCount + obstacleHypotheses[j].notSeenButShouldSeenCount / 2;
+        obstacleHypotheses.erase(obstacleHypotheses.begin() + j);
+      }
+    }
+  }
+}
+
+void ObstacleModelProvider::setLeftRight()
+{
+  for(auto& obstacle : obstacleHypotheses)
+    obstacle.setLeftRight((obstacle.left - obstacle.right).norm() * .5f);
 }
 
 void ObstacleModelProvider::shouldBeSeen()
 {
-  if(iWantToBeAnObstacle.empty())
+  if(obstacleHypotheses.empty())
     return;
-  const bool useFieldBoundary = theFieldBoundary.isValid && !theFieldBoundary.boundarySpots.empty();
+
   const float cameraAngle = theCameraMatrix.rotation.getZAngle();
-  const float cameraAngleLeft = cameraAngle + theCameraInfo.openingAngleWidth * .45f,
-    cameraAngleRight = cameraAngle - theCameraInfo.openingAngleWidth * .45f;
-  for(size_t i = 0; i < iWantToBeAnObstacle.size(); ++i)
+  const float cameraAngleLeft = cameraAngle + theCameraInfo.openingAngleWidth * cameraAngleFactor,
+              cameraAngleRight = cameraAngle - theCameraInfo.openingAngleWidth * cameraAngleFactor;
+
+  COMPLEX_DRAWING("module:ObstacleModelProvider:cameraAngle")
+  {
+    Vector2f camLeft(static_cast<float>(maxDistance), 0.f);
+    Vector2f camRight(static_cast<float>(maxDistance), 0.f);
+    camLeft = camLeft.rotate(cameraAngleLeft);
+    camRight = camRight.rotate(cameraAngleRight);
+    const ColorRGBA cameraColor = theCameraInfo.camera == CameraInfo::upper ? ColorRGBA::blue : ColorRGBA::yellow;
+    LINE("module:ObstacleModelProvider:cameraAngle", 0, 0, camLeft.x(), camLeft.y(), 10, Drawings::solidPen, cameraColor);
+    LINE("module:ObstacleModelProvider:cameraAngle", 0, 0, camRight.x(), camRight.y(), 10, Drawings::solidPen, cameraColor);
+  }
+
+  for(size_t i = 0; i < obstacleHypotheses.size(); ++i)
   {
     //check whether the obstacle could be seen in the image
-    InternalObstacle* closer = &(iWantToBeAnObstacle[i]);
+    ObstacleHypothesis* closer = &(obstacleHypotheses[i]);
     Vector2f centerInImage;
     //check if obstacle is not in sight and was not seen for 300ms
-    if(closer->lastMeasurement + 300u > theFrameInfo.time || !closer->isBetween(cameraAngleLeft, cameraAngleRight) || !isInImage(*closer, centerInImage))
-       continue;
+    if(theFrameInfo.getTimeSince(closer->lastSeen) < 300 || !closer->isBetween(cameraAngleLeft, cameraAngleRight) ||
+       !closer->isInImage(centerInImage, theCameraInfo, theCameraMatrix))
+      continue;
+
+    COMPLEX_DRAWING("module:ObstacleModelProvider:obstacleNotSeen")
+    {
+      Vector2f leftInImage, rightInImage;
+      if(Transformation::robotToImage(closer->left, theCameraMatrix, theCameraInfo, leftInImage))
+        MID_DOT("module:ObstacleModelProvider:obstacleNotSeen", closer->left.x(), closer->left.y(), ColorRGBA::violet, ColorRGBA::black);
+      MID_DOT("module:ObstacleModelProvider:obstacleNotSeen", centerInImage.x(), centerInImage.y(), ColorRGBA::violet, ColorRGBA::black);
+      if(Transformation::robotToImage(closer->right, theCameraMatrix, theCameraInfo, rightInImage))
+        MID_DOT("module:ObstacleModelProvider:obstacleNotSeen", rightInImage.x(), rightInImage.y(), ColorRGBA::violet, ColorRGBA::black);
+    }
 
     //is another obstacle behind this one and the further one was measured
     if(shadowedRobots(closer, i, cameraAngleLeft, cameraAngleRight))
-       continue;
+      continue;
     //is too much green in the robot, the fieldboundary cuts the robot
-    if(useFieldBoundary && fieldBoundaryFurtherAsObstacle(iWantToBeAnObstacle[i], centerInImage))
+    if(theFieldBoundary.isValid &&
+       obstacleHypotheses[i].fieldBoundaryFurtherAsObstacle(centerInImage, notSeenThreshold, theCameraInfo, theCameraMatrix, theImageCoordinateSystem, theFieldBoundary))
       continue;
     //obstacle is not seen
     ++closer->notSeenButShouldSeenCount;
   }
 }
 
-/*void ObstacleModelProvider::fusion4D(InternalObstacle& one, const InternalObstacle& other)
+bool ObstacleModelProvider::shadowedRobots(ObstacleHypothesis* closer, const size_t i, const float cameraAngleLeft, const float cameraAngleRight)
 {
-//multidimensional square equation (german: "Multidimensionale quadratische Ausgleichsrechnung" aus dem Skript
-//"Theorie der Sensorfusion")
-const Eigen::Matrix<float, 8, 4> A = (Eigen::Matrix<float, 8, 4>() << Matrix4f::Identity(), Matrix4f::Identity()).finished();
-const Eigen::Matrix<float, 4, 8> AT = A.transpose();
-const Eigen::Matrix<float, 8, 8> Sigma = ((Eigen::Matrix<float, 8, 8>() << one.covariance, Matrix4f::Zero(), Matrix4f::Zero(), other.covariance
-).finished());
-if(Sigma.determinant() == 0)
-{
-ANNOTATION("ObstacleModelProvider", "4dfusion determinant");
-OUTPUT_ERROR("Call Florian: one is " << one.type << " has cov: " << one.covariance(0, 0) << " " << one.covariance(1, 1) << " " << one.covariance(2, 2) << " " << one.covariance(3, 3)
-<< " other's type " << other.type << " has cov: " << other.covariance(0, 0) << " " << other.covariance(1, 1) << " " << other.covariance(2, 2) << " " << other.covariance(3, 3));
-return;
-}
-const Eigen::Matrix<float, 8, 8> SigmaInv = Sigma.inverse();
-const Eigen::Matrix<float, 8, 1> z = (Eigen::Matrix<float, 8, 1>() << one.center, one.velocity,
-other.center, other.velocity).finished();
-const Eigen::Matrix4f ATSigmaInvAINV = ((AT * SigmaInv) * A).inverse();
-const Vector4f X = ATSigmaInvAINV * AT * SigmaInv * z;
-ASSERT(X.allFinite());
-ASSERT(ATSigmaInvAINV.allFinite());
-one.covariance = ATSigmaInvAINV;
-one.center << X(0), X(1);
-
-if(one.type == Obstacle::goalpost)
-one.setLeftRight(theFieldDimensions.goalPostRadius);
-else
-one.setLeftRight(Obstacle::getRobotDepth());
-
-//if(one.type != Obstacle::goalpost && one.type != Obstacle::unknown)
-//{
-//  //one.velocity << X(2), X(3);
-//}
-}*/
-
-bool ObstacleModelProvider::isInImage(const InternalObstacle& obstacle, Vector2f centerInImage) const
-{
-  return Transformation::robotToImage(obstacle.center, theCameraMatrix, theCameraInfo, centerInImage)
-     && centerInImage.x() < theCameraInfo.width - 10.f && centerInImage.x() > 10.f
-     && centerInImage.y() < theCameraInfo.height - 10.f && centerInImage.y() > 10.f;
-}
-
-bool ObstacleModelProvider::shadowedRobots(InternalObstacle* closer, const size_t i, const float cameraAngleLeft, const float cameraAngleRight)
-{
-  for(size_t j = iWantToBeAnObstacle.size() - 1; j > i; --j)
+  for(size_t j = obstacleHypotheses.size() - 1; j > i; --j)
   {
-    InternalObstacle* further = &(iWantToBeAnObstacle[j]);
-    if(further->lastMeasurement == theFrameInfo.time)
+    ObstacleHypothesis* further = &(obstacleHypotheses[j]);
+    if(further->lastSeen == theFrameInfo.time)
       continue;
     //check if obstacle is not in sight
     Vector2f centerInImage2;
-    if(!further->isBetween(cameraAngleLeft, cameraAngleRight) || !isInImage(*further, centerInImage2))
+    if(!further->isBetween(cameraAngleLeft, cameraAngleRight) || !further->isInImage(centerInImage2, theCameraInfo, theCameraMatrix))
       continue;
     //which obstacle is closer
-    InternalObstacle::closerFurther(closer, further);
+    if(further->center.squaredNorm() < closer->center.squaredNorm())
+      std::swap(closer, further);
     if(closer->type >= Obstacle::fallenSomeRobot) //fallen robots in front of another obstacle is okay
       continue;
     //closer one seems to be non existent
@@ -753,72 +459,12 @@ bool ObstacleModelProvider::shadowedRobots(InternalObstacle* closer, const size_
   return false;
 }
 
-bool ObstacleModelProvider::fieldBoundaryFurtherAsObstacle(InternalObstacle& obstacle, const Vector2f centerInImage)
+void ObstacleModelProvider::propagateObstacles(ObstacleModel& obstacleModel) const
 {
-  Vector2f leftInImage, rightInImage;
-  const bool left = Transformation::robotToImage(obstacle.left, theCameraMatrix, theCameraInfo, leftInImage);
-  const bool right = Transformation::robotToImage(obstacle.right, theCameraMatrix, theCameraInfo, rightInImage);
-  for(const auto& boundarySpot : theFieldBoundary.boundarySpots)
+  obstacleModel.obstacles.clear();
+  for(const auto& ob : obstacleHypotheses)
   {
-    //obstacle is behind the field boundary (obstacle could be seen but is not present)
-    if(left && right && boundarySpot.x() >= leftInImage.x() && boundarySpot.x() <= rightInImage.x()
-       && boundarySpot.y() < leftInImage.y() && boundarySpot.y() < rightInImage.y())
-    {
-      obstacle.notSeenButShouldSeenCount += std::max(1u, notSeenThreshold / 10);
-      return true;
-    }
-    else if(left && boundarySpot.x() >= leftInImage.x() && boundarySpot.x() <= centerInImage.x() &&
-            boundarySpot.y() < centerInImage.y() && boundarySpot.y() < leftInImage.y())
-    {
-      obstacle.notSeenButShouldSeenCount += std::max(1u, notSeenThreshold / 10);
-      return true;
-    }
-    else if(right && boundarySpot.x() >= centerInImage.x() && boundarySpot.x() <= rightInImage.x() &&
-            boundarySpot.y() < centerInImage.y() && boundarySpot.y() < rightInImage.y())
-    {
-      obstacle.notSeenButShouldSeenCount += std::max(1u, notSeenThreshold / 10);
-      return true;
-    }
+    if(ob.seenCount >= minPercepts || debug)
+      obstacleModel.obstacles.emplace_back(ob);
   }
-  return false;
-}
-
-InternalObstacle::InternalObstacle(const Matrix2f& covariance, const Vector2f& center, const Vector2f& left, const Vector2f& right,
-                                   const unsigned lastMeasurement, const unsigned seenCount, const Type type)
-{
-  this->covariance << covariance;// , Matrix2f::Zero(), Matrix2f::Zero(), (Matrix2f() << 10000.f, 0.f, 0.f, 10000.f).finished();
-  this->center = center;
-  this->left = left;
-  this->right = right;
-  this->velocity.setZero();
-  this->type = type;
-  this->lastMeasurement = lastMeasurement;
-  this->seenCount = seenCount;
-  notSeenButShouldSeenCount = 0u;
-  upright = type < fallenSomeRobot ? 1 : -1;
-  if(type == fallenTeammate || type == teammate)
-    color = -1;
-  else if(type == fallenOpponent || type == opponent)
-    color = 1;
-  else
-    color = 0;
-}
-
-InternalObstacle::InternalObstacle(const Type type)
-{
-  upright = type < fallenSomeRobot ? 1 : -1;
-  if(type == fallenTeammate || type == teammate)
-    color = -1;
-  else if(type == fallenOpponent || type == opponent)
-    color = 1;
-  else
-    color = 0;
-  this->type = type;
-}
-
-bool InternalObstacle::isBehind(const InternalObstacle& other) const
-{
-  const bool allPointsFurtherAway = left.squaredNorm() > other.left.squaredNorm() && right.squaredNorm() > other.right.squaredNorm();
-  const bool centerBetweenLeftRight = left.angle() < other.center.angle() && right.angle() > other.center.angle();
-  return centerBetweenLeftRight && allPointsFurtherAway;
 }

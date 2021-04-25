@@ -2,7 +2,7 @@
 
 #include "Tools/Module/Module.h"
 #include "Representations/MotionControl/HeadMotionRequest.h"
-#include "Representations/Perception/CameraMatrix.h"
+#include "Representations/Perception/ImagePreprocessing/CameraMatrix.h"
 #include "Representations/Infrastructure/CameraInfo.h"
 
 MODULE(ManualHeadMotionProvider,
@@ -14,21 +14,19 @@ MODULE(ManualHeadMotionProvider,
   {,
     (int)(0) xImg,
     (int)(0) yImg,
-    ((CameraInfo) Camera)(lower) camera,
+    (CameraInfo::Camera)(CameraInfo::lower) camera,
   }),
 });
 
 class ManualHeadMotionProvider: public ManualHeadMotionProviderBase
 {
 public:
-  ManualHeadMotionProvider();
-
   /**
    * The update method to generate the head joint angles from desired head motion.
    */
-  void update(HeadMotionRequest& headMotionRequest);
+  void update(HeadMotionRequest& headMotionRequest) override;
 
 private:
-  int currentX;
-  int currentY;
+  int currentX = 0;
+  int currentY = 0;
 };

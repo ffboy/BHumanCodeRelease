@@ -15,6 +15,7 @@ buildPlatformDir = {
 buildDir = "$(buildPlatformDir)/$(target)/$(configuration)"
 
 winMarePath = "$(utilDirRoot)/SimRobot/Util/mare/Windows/bin/mare.exe"
+linuxMarePath = "$(utilDirRoot)/SimRobot/Util/mare/Linux/bin/mare"
 
 configurations = {
   Develop
@@ -26,13 +27,28 @@ if (tool == "vcxproj") {
   platforms = { "x64" }
 }
 
+OS = {
+  if (platform == "Linux") {
+    "Linux"
+  } else if (host == "Win32") {
+    "Windows"
+  } else if (platform == "MacOSX") {
+    "MACOS"
+  }
+}
+
 defines = {
   if (platform == "Linux") {
     "LINUX"
   } else if (host == "Win32") {
     "WINDOWS"
+    "NOMINMAX"
+    "_SILENCE_ALL_CXX17_DEPRECATION_WARNINGS"
   } else if (platform == "MacOSX") {
-    "OSX"
+    "MACOS"
+  }
+  if (tool == "vcxproj" && ssse3 == "true") {
+    "__SSSE3__"
   }
   if (configuration == "Debug") {
     "_DEBUG"
@@ -42,6 +58,7 @@ defines = {
   if (configuration != "Release") {
     "EIGEN_INITIALIZE_MATRICES_BY_NAN"
   }
+  "CONFIGURATION=$(configuration)"
 }
 
 if (host == "Linux") {
@@ -52,26 +69,31 @@ if (host == "Linux") {
 
 cppFlags = {
   if (tool == "vcxproj") {
+    "/std:c++17"
+    "/permissive-"
     "/W3" // warning level 3
     "/GF" // enable string pooling
     "/Gm- /MP" // disable minimal rebuild and enable multi processor compilation
     "/Zc:wchar_t-" // required for Qt
     if (configuration == "Debug") {
-      "/Od /ZI"
+      "/Od /ZI /bigobj"
     } else {
       "/Ox /Ob2 /Oi /Ot /Oy /GT"
     }
+    "/w44701"
+    "/experimental:preprocessor"
+    "/wd5105" // As of now (09.2019), winbase.h causes this warning ("macro expansion producing 'defined' has undefined behavior") in conjunction with the experimental (standard-compliant) preprocessor.
   } else {
-    "-std=c++11"
+    "-std=c++17"
     "-pipe"
-    "-mssse3"
+    "-fPIC"
     "-Wall"
-    "-Wconversion"
+    "-Wextra"
+    //"-Wconversion" // Activate this again, as soon as qt gets
+    //"-Wno-sign-conversion" // rid of its conversion warnings.
     "-Wliteral-conversion"
-    "-Wsign-compare"
-    "-Wno-deprecated" // This is necessary for users of clang 3.4 and qt. Warnings can be fixed by updating to qt5 and newer qcc headers
-    "-Wno-shorten-64-to-32" // Warnings in qt4. Warnings can be fixed by updating to qt5.
-    "-Wno-sign-conversion" // Alot of warning in Streaming. Also in qt.
+    "-Wno-unused-parameter"
+    "-Wunreachable-code"
     if (configuration == "Debug") {
       "-g"
     } else {
@@ -95,29 +117,77 @@ linkFlags = {
   }
 }
 
+// a rule for compiling a file with Qt's ressouce compiler (rcc)
+qtRccSource = {
+  message = "$(if $(Win32),$(notdir $(file)),$(file)) (Qt rcc)"
+  input = file
+  name = "$(basename $(notdir $(file)))"
+  output = "$(buildDir)/qrc_$(name)$(configuration)$(platform).cpp"
+  if (host == "Win32") {
+    rcc = "$(utilDirRoot)/SimRobot/Util/qt/Windows/bin/rcc.exe"
+  } else {
+    rcc = "QT_SELECT=5 rcc"
+  }
+  command = "$(rcc) -name $(name) $(file) -o $(output)"
+}
+
+// a rule for compiling a file with Qt's meta object compiler (moc)
+qtMocSource = {
+  message = "$(if $(Win32),$(notdir $(file)),$(file)) (Qt moc)"
+  input = file
+  name = "$(basename $(notdir $(file)))"
+  output = "$(buildDir)/moc_$(name)$(configuration)$(platform).cpp"
+  if (host == "Win32") {
+    moc = "$(utilDirRoot)/SimRobot/Util/qt/Windows/bin/moc.exe"
+    mocFlags = "-D_MSC_VER=1800"
+  } else {
+    moc = "QT_SELECT=5 moc"
+    mocFlags = ""
+  }
+  command = "$(moc) $(patsubst %,-D%,$(defines)) $(mocFlags) $(patsubst %,-I%,$(includePaths)) $(file) -o $(output)"
+}
+qtMocSourceNew = {
+  message = "$(if $(Win32),$(notdir $(file)),$(file)) (Qt moc)"
+  input = file
+  name = "$(basename $(notdir $(file)))"
+  output = "$(buildDir)/moc_$(name).cpp $(buildDir)/$(name).moc"
+  if (host == "Win32") {
+    moc = "$(utilDirRoot)/SimRobot/Util/qt/Windows/bin/moc.exe"
+    mocFlags = "-D_MSC_VER=1800"
+  } else {
+    moc = "QT_SELECT=5 moc"
+    mocFlags = ""
+  }
+  command = {
+    "$(moc) $(patsubst %,-D%,$(defines)) $(mocFlags) $(patsubst %,-I%,$(includePaths)) $(file) -o $(buildDir)/moc_$(name).cpp"
+    "$(moc) $(patsubst %,-D%,$(defines)) $(mocFlags) $(patsubst %,-I%,$(includePaths)) $(patsubst %.h,%.cpp,$(file)) -nw -o $(buildDir)/$(name).moc"
+  }
+}
+
 targets = {
   all = {
-    dependencies = { "SimRobot", "Nao", "bush" },
+    dependencies = { "SimRobot", "Nao", "bush" }
   }
 
   include "SimRobot.mare"
 
   include "SimRobotCore2.mare"
   include "SimRobotEditor.mare"
-  include "SimRobotHelp.mare"
 
   include "qtpropertybrowser.mare"
   include "libqxt.mare"
   include "Controller.mare"
   include "SimulatedNao.mare"
 
-  include "libbhuman.mare"
-  include "libgamectrl.mare"
   include "Nao.mare"
 
   include "bush.mare"
   include "copyfiles.mare"
   include "Tests.mare"
+}
+
+cppSource += {
+  message = "$(notdir $(file))"
 }
 
 // given $(precompiledHeader) build pch table
@@ -168,53 +238,6 @@ qtFilesNew = {
   "$(patsubst %.h,%.cpp,$(qtMocFilesNew))" = cppSource + {
     name = "$(basename $(notdir $(file)))"
     input += "$(buildDir)/moc_$(name).cpp $(buildDir)/$(name).moc"
-  },
-}
-
-// a rule for compiling a file with Qt's ressouce compiler (rcc)
-qtRccSource = {
-  message = "$(if $(Win32),$(notdir $(file)),$(file)) (Qt rcc)"
-  input = file
-  name = "$(basename $(notdir $(file)))"
-  output = "$(buildDir)/qrc_$(name)$(configuration)$(platform).cpp"
-  if (host == "Win32") {
-    rcc = "$(utilDirRoot)/SimRobot/Util/qt/Windows/bin/rcc.exe"
-  } else {
-    rcc = "rcc"
-  }
-  command = "$(rcc) -name $(name) $(file) -o $(output)"
-}
-
-// a rule for compiling a file with Qt's meta object compiler (moc)
-qtMocSource = {
-  message = "$(if $(Win32),$(notdir $(file)),$(file)) (Qt moc)"
-  input = file
-  name = "$(basename $(notdir $(file)))"
-  output = "$(buildDir)/moc_$(name)$(configuration)$(platform).cpp"
-  if (host == "Win32") {
-    moc = "$(utilDirRoot)/SimRobot/Util/qt/Windows/bin/moc.exe"
-    mocFlags = "-D_MSC_VER=1800"
-  } else {
-    moc = "moc-qt4"
-    mocFlags = ""
-  }
-  command = "$(moc) $(patsubst %,-D%,$(defines)) $(mocFlags) $(patsubst %,-I%,$(includePaths)) $(file) -o $(output)"
-}
-qtMocSourceNew = {
-  message = "$(if $(Win32),$(notdir $(file)),$(file)) (Qt moc)"
-  input = file
-  name = "$(basename $(notdir $(file)))"
-  output = "$(buildDir)/moc_$(name).cpp $(buildDir)/$(name).moc"
-  if (host == "Win32") {
-    moc = "$(utilDirRoot)/SimRobot/Util/qt/Windows/bin/moc.exe"
-    mocFlags = "-D_MSC_VER=1800"
-  } else {
-    moc = "moc-qt4"
-    mocFlags = ""
-  }
-  command = {
-    "$(moc) $(patsubst %,-D%,$(defines)) $(mocFlags) $(patsubst %,-I%,$(includePaths)) $(file) -o $(buildDir)/moc_$(name).cpp",
-    "$(moc) $(patsubst %,-D%,$(defines)) $(mocFlags) $(patsubst %,-I%,$(includePaths)) $(patsubst %.h,%.cpp,$(file)) -nw -o $(buildDir)/$(name).moc",
   }
 }
 

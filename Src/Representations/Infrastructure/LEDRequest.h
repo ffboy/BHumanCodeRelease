@@ -3,13 +3,12 @@
  *
  * This file contains the LEDRequest struct.
  *
- * @author <A href="mailto:Thomas.Roefer@dfki.de">Thomas Röfer</A>
+ * @author Thomas Röfer
  */
 
 #pragma once
 
-#include "Tools/Streams/AutoStreamable.h"
-#include "Tools/Enum.h"
+#include "Tools/Streams/EnumIndexedArray.h"
 
 /**
  * This describes a LEDRequest
@@ -90,18 +89,20 @@ STREAMABLE(LEDRequest,
     chestRed,
     chestGreen,
     chestBlue,
-    headLedRearLeft0,
-    headLedRearLeft1,
-    headLedRearLeft2,
-    headLedRearRight0,
-    headLedRearRight1,
-    headLedRearRight2,
-    headLedMiddleRight0,
-    headLedFrontRight0,
-    headLedFrontRight1,
-    headLedFrontLeft0,
-    headLedFrontLeft1,
-    headLedMiddleLeft0,
+    firstHeadLED,
+    headRearLeft0 = firstHeadLED,
+    headRearLeft1,
+    headRearLeft2,
+    headRearRight0,
+    headRearRight1,
+    headRearRight2,
+    headMiddleRight0,
+    headFrontRight0,
+    headFrontRight1,
+    headFrontLeft0,
+    headFrontLeft1,
+    headMiddleLeft0,
+    lastHeadLED = headMiddleLeft0,
     footLeftRed,
     footLeftGreen,
     footLeftBlue,
@@ -109,6 +110,8 @@ STREAMABLE(LEDRequest,
     footRightGreen,
     footRightBlue,
   });
+
+  static constexpr size_t numOfHeadLEDs = LED::headMiddleLeft0 - LED::headRearLeft0 + 1;
 
   ENUM(LEDState,
   {,
@@ -121,13 +124,13 @@ STREAMABLE(LEDRequest,
 
   LEDRequest()
   {
-    for(int i = 0; i < numOfLEDs; ++i)
+    FOREACH_ENUM(LED, i)
       ledStates[i] = off;
   }
 
   bool operator==(const LEDRequest& other) const
   {
-    for(int i = 0; i < numOfLEDs; i++)
+    FOREACH_ENUM(LED, i)
       if(ledStates[i] != other.ledStates[i])
         return false;
     return true;
@@ -136,7 +139,7 @@ STREAMABLE(LEDRequest,
   bool operator!=(const LEDRequest& other) const
   {
     return !(*this == other);
-  }
-  ,
-  (LEDState[numOfLEDs]) ledStates, /**< The intended states of the LEDs (use type State). */
+  },
+
+  (ENUM_INDEXED_ARRAY(LEDRequest::LEDState, LED)) ledStates, /**< The intended states of the LEDs (use type State). */
 });

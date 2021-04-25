@@ -1,7 +1,7 @@
 /****************************************************************************
 **
-** Copyright (C) 2015 The Qt Company Ltd.
-** Contact: http://www.qt.io/licensing/
+** Copyright (C) 2016 The Qt Company Ltd.
+** Contact: https://www.qt.io/licensing/
 **
 ** This file is part of the QtGui module of the Qt Toolkit.
 **
@@ -11,29 +11,27 @@
 ** accordance with the commercial license agreement provided with the
 ** Software or, alternatively, in accordance with the terms contained in
 ** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see http://www.qt.io/terms-conditions. For further
-** information use the contact form at http://www.qt.io/contact-us.
+** and conditions see https://www.qt.io/terms-conditions. For further
+** information use the contact form at https://www.qt.io/contact-us.
 **
 ** GNU Lesser General Public License Usage
 ** Alternatively, this file may be used under the terms of the GNU Lesser
-** General Public License version 2.1 or version 3 as published by the Free
-** Software Foundation and appearing in the file LICENSE.LGPLv21 and
-** LICENSE.LGPLv3 included in the packaging of this file. Please review the
-** following information to ensure the GNU Lesser General Public License
-** requirements will be met: https://www.gnu.org/licenses/lgpl.html and
-** http://www.gnu.org/licenses/old-licenses/lgpl-2.1.html.
-**
-** As a special exception, The Qt Company gives you certain additional
-** rights. These rights are described in The Qt Company LGPL Exception
-** version 1.1, included in the file LGPL_EXCEPTION.txt in this package.
+** General Public License version 3 as published by the Free Software
+** Foundation and appearing in the file LICENSE.LGPL3 included in the
+** packaging of this file. Please review the following information to
+** ensure the GNU Lesser General Public License version 3 requirements
+** will be met: https://www.gnu.org/licenses/lgpl-3.0.html.
 **
 ** GNU General Public License Usage
 ** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 3.0 as published by the Free Software
-** Foundation and appearing in the file LICENSE.GPL included in the
-** packaging of this file.  Please review the following information to
-** ensure the GNU General Public License version 3.0 requirements will be
-** met: http://www.gnu.org/copyleft/gpl.html.
+** General Public License version 2.0 or (at your option) the GNU General
+** Public license version 3 or any later version approved by the KDE Free
+** Qt Foundation. The licenses are as published by the Free Software
+** Foundation and appearing in the file LICENSE.GPL2 and LICENSE.GPL3
+** included in the packaging of this file. Please review the following
+** information to ensure the GNU General Public License requirements will
+** be met: https://www.gnu.org/licenses/gpl-2.0.html and
+** https://www.gnu.org/licenses/gpl-3.0.html.
 **
 ** $QT_END_LICENSE$
 **
@@ -42,25 +40,16 @@
 #ifndef QMOVIE_H
 #define QMOVIE_H
 
+#include <QtGui/qtguiglobal.h>
+
 #include <QtCore/qobject.h>
-
-#ifndef QT_NO_MOVIE
-
 #include <QtCore/qbytearray.h>
 #include <QtCore/qlist.h>
-#include <QtCore/qobject.h>
 #include <QtGui/qimagereader.h>
 
-#ifdef QT3_SUPPORT
-#include <QtGui/qimage.h>
-#include <QtGui/qpixmap.h>
-#endif
-
-QT_BEGIN_HEADER
+QT_REQUIRE_CONFIG(movie);
 
 QT_BEGIN_NAMESPACE
-
-QT_MODULE(Gui)
 
 class QByteArray;
 class QColor;
@@ -75,7 +64,6 @@ class Q_GUI_EXPORT QMovie : public QObject
 {
     Q_OBJECT
     Q_DECLARE_PRIVATE(QMovie)
-    Q_ENUMS(MovieState CacheMode)
     Q_PROPERTY(int speed READ speed WRITE setSpeed)
     Q_PROPERTY(CacheMode cacheMode READ cacheMode WRITE setCacheMode)
 public:
@@ -84,14 +72,16 @@ public:
         Paused,
         Running
     };
+    Q_ENUM(MovieState)
     enum CacheMode {
         CacheNone,
         CacheAll
     };
+    Q_ENUM(CacheMode)
 
-    QMovie(QObject *parent = 0);
-    explicit QMovie(QIODevice *device, const QByteArray &format = QByteArray(), QObject *parent = 0);
-    explicit QMovie(const QString &fileName, const QByteArray &format = QByteArray(), QObject *parent = 0);
+    explicit QMovie(QObject *parent = Q_NULLPTR);
+    explicit QMovie(QIODevice *device, const QByteArray &format = QByteArray(), QObject *parent = Q_NULLPTR);
+    explicit QMovie(const QString &fileName, const QByteArray &format = QByteArray(), QObject *parent = Q_NULLPTR);
     ~QMovie();
 
     static QList<QByteArray> supportedFormats();
@@ -130,8 +120,6 @@ public:
     CacheMode cacheMode() const;
     void setCacheMode(CacheMode mode);
 
-    CacheMode cacheMode(); // ### Qt 5: remove me
-
 Q_SIGNALS:
     void started();
     void resized(const QSize &size);
@@ -151,27 +139,8 @@ public Q_SLOTS:
 private:
     Q_DISABLE_COPY(QMovie)
     Q_PRIVATE_SLOT(d_func(), void _q_loadNextFrame())
-
-#ifdef QT3_SUPPORT
-public:
-    inline QT3_SUPPORT bool isNull() const { return isValid(); }
-    inline QT3_SUPPORT int frameNumber() const { return currentFrameNumber(); }
-    inline QT3_SUPPORT bool running() const { return state() == Running; }
-    inline QT3_SUPPORT bool paused() const { return state() == Paused; }
-    inline QT3_SUPPORT bool finished() const { return state() == NotRunning; }
-    inline QT3_SUPPORT void restart() { stop(); start(); }
-    inline QT3_SUPPORT QImage frameImage() const { return currentImage(); }
-    inline QT3_SUPPORT QPixmap framePixmap() const { return currentPixmap(); }
-    inline QT3_SUPPORT void step() { jumpToNextFrame(); }
-    inline QT3_SUPPORT void pause() { setPaused(true); }
-    inline QT3_SUPPORT void unpause() { setPaused(false); }
-#endif
 };
 
 QT_END_NAMESPACE
-
-QT_END_HEADER
-
-#endif // QT_NO_MOVIE
 
 #endif // QMOVIE_H

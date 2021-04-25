@@ -1,8 +1,7 @@
 #!/bin/bash
-scriptPath=$(echo $0 | sed "s|^\.\./|`pwd`/../|" | sed "s|^\./|`pwd`/|")
-hooksPath=$(dirname ${scriptPath})
-gitPath=$(dirname ${hooksPath})
-wdPath=$(dirname ${gitPath})
+scriptPath=$(cd "$(dirname "$(which "$0")")" && pwd)
+gitPath=$(dirname "${scriptPath}")
+wdPath=$(dirname "${gitPath}")
 
 if ! [ -z "$GIT_WORK_TREE" -o "$GIT_WORK_TREE" = "." -o "$GIT_WORK_TREE" = "$wdPath" ]
 then
@@ -10,25 +9,39 @@ then
   exit 0;
 fi
 
-scriptPath="`dirname "$0"`"
-
 execute() {
   if [ -x "$1" ]
   then
-    $1
+    $1 >/dev/null
   fi
 }
 
-if [ "$(git config hooks.generateProject)" = "true" ]
+if [ "$('GIT' config hooks.generateProject)" = "true" ]
 then
   case "$OSTYPE" in
-    "cygwin"|"msys") if [ -f "${scriptPath}/../../Make/VS2015/generate.cmd" ]
-                     then
-                       cmd "/C call $(cygpath -t windows "${scriptPath}/../../Make/VS2015/generate.cmd")"
-                     fi
-    ;;
-#    linux*)          execute "${scriptPath}/../../Make/Linux/generate";;
-    darwin*)         execute "${scriptPath}/../../Make/OSX/generate";;
-    *)               echo "WARNING: Unknown platform. Project files not generated.";;
+    "cygwin"|"msys")
+      if [ -f "${scriptPath}/../../Make/VS2019/generate.cmd" ]; then
+        pushd "${scriptPath}/../../Make/VS2019" >/dev/null
+        ./generate
+        popd >/dev/null
+      fi
+      ;;
+    linux*)
+      if [ -e /proc/version -a ! -z "`grep Microsoft </proc/version`" ]; then
+        if [ -f "${scriptPath}/../../Make/VS2019/generate.cmd" ]; then
+          pushd "${scriptPath}/../../Make/VS2019" >/dev/null
+          ./generate
+          popd >/dev/null
+        fi
+      else
+        execute "${scriptPath}/../../Make/LinuxCodeLite/generate"
+      fi
+      ;;
+    darwin*)
+      execute "${scriptPath}/../../Make/macOS/generate"
+      ;;
+    *)
+      echo "Warning: Unknown platform. Project files not generated." >&2
+      ;;
   esac
 fi

@@ -2,7 +2,7 @@
  * @file InMessage.h
  *
  * Declaration of class InMessageQueue, InBinaryMessage, InTextMessage,
- * InConfigMessage, InMessage and MessageHandler.
+ * InMessage, and MessageHandler.
  *
  * Include that file for the definition of classes that derive from MessageHandler.
  *
@@ -34,13 +34,13 @@ public:
    * The function states whether the stream actually exists.
    * @return Does the file exist?
    */
-  virtual bool exists() const;
+  virtual bool exists() const override;
 
   /**
    * The function states whether the end of the file has been reached.
    * @return End of file reached?
    */
-  virtual bool getEof() const;
+  virtual bool getEof() const override;
 
 protected:
   /**
@@ -56,7 +56,7 @@ protected:
    *          "size" bytes large.
    * @param size The number of bytes to be read.
    */
-  virtual void readFromStream(void* p, size_t size);
+  void readFromStream(void* p, size_t size) override;
 };
 
 /**
@@ -70,14 +70,14 @@ public:
   /**
    * Constructor
    * @param q A pointer to the message queue base
-    */
+   */
   InBinaryMessage(MessageQueueBase* q);
 
   /**
    * The function returns whether this is a binary stream.
    * @return Does it output data in binary format?
    */
-  virtual bool isBinary() const {return true;}
+  bool isBinary() const override {return true;}
 };
 
 /**
@@ -91,7 +91,7 @@ public:
   /**
    * Constructor
    * @param q A pointer to the message queue base
-    */
+   */
   InTextMessage(MessageQueueBase* q);
 
   /**
@@ -99,21 +99,6 @@ public:
    * @return The string containing the remaining contents of the stream.
    */
   std::string readAll();
-};
-
-/**
- * @class InConfigMessage
- *
- * A config-file-style text stream from a message queue.
- */
-class InConfigMessage : public InStream<InMessageQueue, InConfig>
-{
-public:
-  /**
-   * Constructor
-   * @param q A pointer to the message queue base
-   */
-  InConfigMessage(MessageQueueBase* q);
 };
 
 /**
@@ -130,7 +115,7 @@ private:
   /**
    * The message queue where the messages are read from. Note that the selection which message is
    * read is not done by InMessageQueue but by MessageQueue itself.
-    */
+   */
   MessageQueueBase& queue;
 
 public:
@@ -139,9 +124,6 @@ public:
 
   /** An interface for reading text messages from the queue */
   InTextMessage text;
-
-  /** An interface for reading config-file-style text messages from the queue */
-  InConfigMessage config;
 
   /**
    * Constructor
@@ -164,10 +146,13 @@ public:
   /** sets the read position to 0 so that the message can be read again */
   void resetReadPosition();
 
+  /** Reads the identifier of the thread for idFrameBegin/Finished. Converts old process letters. */
+  std::string readThreadIdentifier();
+
 protected:
   /**
    * Gives a direct read access to the message.
-   * @return The adress of the first byte of the message.
+   * @return The address of the first byte of the message.
    */
   const char* getData() const;
 

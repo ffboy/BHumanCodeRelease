@@ -1,51 +1,79 @@
 # Configuration for simulation scenes with oracled percepts
 
-# activate simulation time
+# Activate simulation time
 st on
 
-# only a single robot displays game state
+# Only a single robot displays game state
 dr debugDrawing3d:representation:GameInfo
 dr debugDrawing3d:representation:TeamInfo
 
-# in case we have more than a single robot
+# In case we have more than a single robot
 robot all
-
-# Select modules for simulator
-mr CameraInfo CognitionLogDataProvider
-mr FrameInfo CognitionLogDataProvider
-mr JointSensorData MotionLogDataProvider
-mr InertialSensorData MotionLogDataProvider
-mr KeyStates MotionLogDataProvider
-mr UsSensorData MotionLogDataProvider
-mr FrameInfo MotionLogDataProvider
-mr GroundTruthWorldState CognitionLogDataProvider
-mr GroundTruthRobotPose OracledWorldModelProvider
-mr GroundTruthBallModel OracledWorldModelProvider
 
 # Fast, because we do not compute images
 ci off
-mr Image default
 
-# Deactivate unused modules
-mr RobotHealth default
-mr Thumbnail off
+# Ground truth modules
+mr GroundTruthWorldState LogDataProvider Cognition
+mr GroundTruthRobotPose OracledWorldModelProvider Cognition
+mr GroundTruthBallModel OracledWorldModelProvider Cognition
 
+# Field views need ground truth and some later deactivated modules
 call Includes/FieldViews
 
-mr PlayersPercept OracledPerceptsProvider
-mr GoalPercept OracledPerceptsProvider
-mr LinePercept OracledPerceptsProvider
-mr BallPercept OracledPerceptsProvider
-mr FieldBoundary OracledPerceptsProvider
-mr PenaltyMarkPercept OracledPerceptsProvider
-mr LineSpots off
-mr PotentialLineSpots off
+# Select modules for simulator
+mr CameraInfo LogDataProvider Lower
+mr CameraInfo LogDataProvider Upper
+mr FrameInfo LogDataProvider Lower
+mr FrameInfo LogDataProvider Upper
+mr FrameInfo LogDataProvider Motion
+mr FsrSensorData LogDataProvider Motion
+mr InertialSensorData LogDataProvider Motion
+mr JointSensorData LogDataProvider Motion
+mr KeyStates LogDataProvider Motion
+
+# Switch to percept oracle
+mr BallPercept OracledPerceptsProvider Lower
+mr BallPercept OracledPerceptsProvider Upper
+mr CirclePercept OracledPerceptsProvider Lower
+mr CirclePercept OracledPerceptsProvider Upper
+mr FieldBoundary OracledPerceptsProvider Lower
+mr FieldBoundary OracledPerceptsProvider Upper
+mr LinesPercept OracledPerceptsProvider Lower
+mr LinesPercept OracledPerceptsProvider Upper
+mr ObstaclesFieldPercept OracledPerceptsProvider Lower
+mr ObstaclesFieldPercept OracledPerceptsProvider Upper
+mr ObstaclesImagePercept OracledPerceptsProvider Lower
+mr ObstaclesImagePercept OracledPerceptsProvider Upper
+mr PenaltyMarkPercept OracledPerceptsProvider Lower
+mr PenaltyMarkPercept OracledPerceptsProvider Upper
+
+# Representations not required anymore
+mr AutoExposureWeightTable off
+mr BallRegions off
 mr BallSpots off
-mr ScanlineRegionsClipped off
-mr ScanlineRegions off
+mr CameraImage off
+mr CameraIntrinsics off
+mr CNSImage off
+mr CNSPenaltyMarkRegions off
+mr CNSRegions off
+mr ColorScanLineRegionsHorizontal off
+mr ColorScanLineRegionsVertical off
+mr ColorScanLineRegionsVerticalClipped off
+mr ECImage off
+mr JPEGImage off
+mr ObstaclesPerceptorData off
+mr OtherFieldBoundary off
+mr OtherObstaclesPerceptorData off
+mr PenaltyMarkRegions off
+mr PenaltyMarkSpots off
 mr ScanGrid off
-mr ColorTable default
-mr BodyContour default
+mr Thumbnail off
+
+# Representations that are still required
+mr CameraStatus default
+mr FieldFeatureOverview default
+mr RobotHealth default
 
 call Includes/DebugResponses
 call Includes/GameStates

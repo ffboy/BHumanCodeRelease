@@ -1,41 +1,24 @@
 /**
  * @file Tools/Settings.cpp
  * Implementation of a class that provides access to settings-specific configuration directories.
- * @author <a href="mailto:Thomas.Roefer@dfki.de">Thomas Röfer</a>
+ * @author Thomas Röfer
  */
 
 #include "Settings.h"
-#include "Tools/Streams/InStreams.h"
-#include "Representations/Infrastructure/RoboCupGameControlData.h"
 #ifdef TARGET_SIM
 #include "Controller/ConsoleRoboCupCtrl.h"
-#endif
-#ifdef TARGET_ROBOT
-#include "Platform/Linux/NaoBody.h"
-#include <cstdio>
 #endif
 #include "Platform/BHAssert.h"
 #include "Platform/File.h"
 #include "Platform/SystemCall.h"
-#include "Tools/Global.h"
-#include "Tools/Streams/StreamHandler.h"
+#include "Representations/Communication/RoboCupGameControlData.h"
+#include "Tools/Debugging/Debugging.h"
+#include "Tools/Logging/LoggingTools.h"
 #include "Tools/Streams/AutoStreamable.h"
-
-STREAMABLE(Robots,
-{
-  STREAMABLE(RobotId,
-  {,
-    (std::string) name,
-    (std::string) headId,
-    (std::string) bodyId,
-  });
-  ,
-  (std::vector<RobotId>) robotsIds,
-});
-
-bool Settings::recover = false;
+#include "Tools/Streams/InStreams.h"
 
 Settings Settings::settings(true);
+std::vector<std::string> Settings::scenarios = {"", ""};
 bool Settings::loaded = false;
 
 Settings::Settings(bool master)
@@ -45,7 +28,10 @@ Settings::Settings(bool master)
 
 Settings::Settings()
 {
-  static_assert(TEAM_BLUE == blue && TEAM_RED == red && TEAM_YELLOW == yellow && TEAM_BLACK == black, "These macros and enums have to match!");
+  static_assert(TEAM_BLUE == blue && TEAM_RED == red && TEAM_YELLOW == yellow && TEAM_BLACK == black
+                && TEAM_WHITE == white && TEAM_GREEN == green && TEAM_ORANGE == orange
+                && TEAM_PURPLE == purple && TEAM_BROWN == brown && TEAM_GRAY == gray,
+                "These macros and enums have to match!");
   if(!loaded)
   {
     VERIFY(settings.load());
@@ -59,11 +45,17 @@ Settings::Settings()
     int index = atoi(RoboCupCtrl::controller->getRobotName().c_str() + 5) - 1;
     teamNumber = index < 6 ? 1 : 2;
     teamPort = 10000 + teamNumber;
-    teamColor = index < 6 ? blue : red;
+    teamColor = index < 6
+                ? TeamColor(RoboCupCtrl::controller->gameController.teamInfos[0].teamColor)
+                : TeamColor(RoboCupCtrl::controller->gameController.teamInfos[1].teamColor);
     playerNumber = index % 6 + 1;
+    if(scenarios[teamNumber - 1] != "")
+    {
+      scenario = scenarios[teamNumber - 1];
+    }
   }
 
-  robotName = "Nao";
+  headName = bodyName = "Nao";
 
   ConsoleRoboCupCtrl* ctrl = dynamic_cast<ConsoleRoboCupCtrl*>(RoboCupCtrl::controller);
   if(ctrl)
@@ -71,91 +63,24 @@ Settings::Settings()
     std::string logFileName = ctrl->getLogFile();
     if(logFileName != "")
     {
-      QRegExp re("[0-9]_[A-Za-z]*_[0-9][0-9][0-9][0-9]-[0-9][0-9]-[0-9][0-9]_[0-9][0-9]-[0-9][0-9]-[0-9][0-9].log", Qt::CaseSensitive, QRegExp::RegExp2);
-      int pos = re.indexIn(logFileName.c_str());
-      if(pos != -1)
-      {
-        robotName = logFileName.substr(pos + 2);
-        robotName = robotName.substr(0, robotName.find("_"));
-      }
-      else
-        robotName = "Default";
+      headName = bodyName = "Default";
+      LoggingTools::parseName(logFileName, nullptr, &headName, &bodyName, &scenario, &location, nullptr, &playerNumber);
     }
   }
-
-  bodyName = robotName.c_str();
-
 #endif
-
-  isDropInGame = location.find("DropIn") != std::string::npos;
-  isCornerChallenge = location.find("CornerChallenge") != std::string::npos;
-  isCarpetChallenge = location.find("CarpetChallenge") != std::string::npos;
-  isRealBallChallenge = location.find("RealisticBallChallenge") != std::string::npos;
-  isGoalkeeper = !isDropInGame && playerNumber == 1;
 }
 
 bool Settings::load()
 {
-  if(!Global::theStreamHandler)
-  {
-    static StreamHandler streamHandler;
-    Global::theStreamHandler = &streamHandler;
-  }
-
-#ifdef TARGET_ROBOT
-  robotName = SystemCall::getHostName();
-  
-  std::string bhdir = File::getBHDir();
-  InMapFile robotsStream(bhdir + "/Config/Robots/robots.cfg");
-  if(!robotsStream.exists())
-  {
-    TRACE("Could not load robots.cfg");
-    return false;
-  }
-  else
-  {
-    Robots robots;
-    robotsStream >> robots;
-    std::string bodyId = NaoBody().getBodyId();
-    for(const Robots::RobotId& robot : robots.robotsIds)
-    {
-      if(robot.bodyId == bodyId)
-      {
-        bodyName = robot.name;
-        break;
-      }
-    }
-    if(bodyId.empty())
-    {
-      TRACE("Could not find bodyId in robots.cfg");
-      return false;
-    }
-  }
-#else
-  robotName = "Nao";
-  bodyName = "Nao";
-#endif
-
   InMapFile stream("settings.cfg");
   if(stream.exists())
+  {
     stream >> *this;
+    return true;
+  }
   else
   {
-    TRACE("Could not load settings for robot \"%s\" from settings.cfg", robotName.c_str());
+    OUTPUT_ERROR("Could not load settings for robot \"" << headName.c_str() << "\" from settings.cfg");
     return false;
   }
-
-#ifdef TARGET_ROBOT
-  if(robotName == bodyName)
-    printf("Hi, I am %s.\n", robotName.c_str());
-  else
-    printf("Hi, I am %s (using %ss Body).\n", robotName.c_str(), bodyName.c_str());
-  printf("teamNumber %d\n", teamNumber);
-  printf("teamPort %d\n", teamPort);
-  printf("teamColor %s\n", getName(teamColor));
-  printf("playerNumber %d\n", playerNumber);
-  printf("location %s\n", location.c_str());
-#endif
-
-  return true;
 }

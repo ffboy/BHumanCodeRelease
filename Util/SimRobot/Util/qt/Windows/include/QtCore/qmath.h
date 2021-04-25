@@ -1,7 +1,7 @@
 /****************************************************************************
 **
-** Copyright (C) 2015 The Qt Company Ltd.
-** Contact: http://www.qt.io/licensing/
+** Copyright (C) 2016 The Qt Company Ltd.
+** Contact: https://www.qt.io/licensing/
 **
 ** This file is part of the QtCore module of the Qt Toolkit.
 **
@@ -11,29 +11,27 @@
 ** accordance with the commercial license agreement provided with the
 ** Software or, alternatively, in accordance with the terms contained in
 ** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see http://www.qt.io/terms-conditions. For further
-** information use the contact form at http://www.qt.io/contact-us.
+** and conditions see https://www.qt.io/terms-conditions. For further
+** information use the contact form at https://www.qt.io/contact-us.
 **
 ** GNU Lesser General Public License Usage
 ** Alternatively, this file may be used under the terms of the GNU Lesser
-** General Public License version 2.1 or version 3 as published by the Free
-** Software Foundation and appearing in the file LICENSE.LGPLv21 and
-** LICENSE.LGPLv3 included in the packaging of this file. Please review the
-** following information to ensure the GNU Lesser General Public License
-** requirements will be met: https://www.gnu.org/licenses/lgpl.html and
-** http://www.gnu.org/licenses/old-licenses/lgpl-2.1.html.
-**
-** As a special exception, The Qt Company gives you certain additional
-** rights. These rights are described in The Qt Company LGPL Exception
-** version 1.1, included in the file LGPL_EXCEPTION.txt in this package.
+** General Public License version 3 as published by the Free Software
+** Foundation and appearing in the file LICENSE.LGPL3 included in the
+** packaging of this file. Please review the following information to
+** ensure the GNU Lesser General Public License version 3 requirements
+** will be met: https://www.gnu.org/licenses/lgpl-3.0.html.
 **
 ** GNU General Public License Usage
 ** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 3.0 as published by the Free Software
-** Foundation and appearing in the file LICENSE.GPL included in the
-** packaging of this file.  Please review the following information to
-** ensure the GNU General Public License version 3.0 requirements will be
-** met: http://www.gnu.org/copyleft/gpl.html.
+** General Public License version 2.0 or (at your option) the GNU General
+** Public license version 3 or any later version approved by the KDE Free
+** Qt Foundation. The licenses are as published by the Free Software
+** Foundation and appearing in the file LICENSE.GPL2 and LICENSE.GPL3
+** included in the packaging of this file. Please review the following
+** information to ensure the GNU General Public License requirements will
+** be met: https://www.gnu.org/licenses/gpl-2.0.html and
+** https://www.gnu.org/licenses/gpl-3.0.html.
 **
 ** $QT_END_LICENSE$
 **
@@ -42,19 +40,26 @@
 #ifndef QMATH_H
 #define QMATH_H
 
-#include <math.h>
-
-#include <QtCore/qglobal.h>
-
-#ifdef Q_OS_SYMBIAN
-#    include <e32math.h>
+#if 0
+#pragma qt_class(QtMath)
 #endif
 
-QT_BEGIN_HEADER
+#include <QtCore/qglobal.h>
+#include <QtCore/qalgorithms.h>
+
+#ifndef _USE_MATH_DEFINES
+#  define _USE_MATH_DEFINES
+#  define undef_USE_MATH_DEFINES
+#endif
+
+#include <cmath>
+
+#ifdef undef_USE_MATH_DEFINES
+#  undef _USE_MATH_DEFINES
+#  undef undef_USE_MATH_DEFINES
+#endif
 
 QT_BEGIN_NAMESPACE
-
-QT_MODULE(Core)
 
 #define QT_SINE_TABLE_SIZE 256
 
@@ -62,203 +67,138 @@ extern Q_CORE_EXPORT const qreal qt_sine_table[QT_SINE_TABLE_SIZE];
 
 inline int qCeil(qreal v)
 {
-#ifdef QT_USE_MATH_H_FLOATS
-    if (sizeof(qreal) == sizeof(float))
-        return int(ceilf(float(v)));
-    else
-#endif
-        return int(ceil(v));
+    using std::ceil;
+    return int(ceil(v));
 }
 
 inline int qFloor(qreal v)
 {
-#ifdef QT_USE_MATH_H_FLOATS
-    if (sizeof(qreal) == sizeof(float))
-        return int(floorf(float(v)));
-    else
-#endif
-        return int(floor(v));
+    using std::floor;
+    return int(floor(v));
 }
 
 inline qreal qFabs(qreal v)
 {
-#ifdef QT_USE_MATH_H_FLOATS
-    if(sizeof(qreal) == sizeof(float))
-        return fabsf(float(v));
-    else
-#endif
-        return fabs(v);
+    using std::fabs;
+    return fabs(v);
 }
 
 inline qreal qSin(qreal v)
 {
-#ifdef Q_OS_SYMBIAN
-    TReal sin_v;
-    Math::Sin(sin_v, static_cast<TReal>(v));
-    return static_cast<qreal>(sin_v);
-#else
-#    ifdef QT_USE_MATH_H_FLOATS
-        if (sizeof(qreal) == sizeof(float))
-            return sinf(float(v));
-        else
-#    endif
-            return sin(v);
-#endif
+    using std::sin;
+    return sin(v);
 }
 
 inline qreal qCos(qreal v)
 {
-#ifdef Q_OS_SYMBIAN
-    TReal cos_v;
-    Math::Cos(cos_v, static_cast<TReal>(v));
-    return static_cast<qreal>(cos_v);
-#else
-#    ifdef QT_USE_MATH_H_FLOATS
-        if (sizeof(qreal) == sizeof(float))
-            return cosf(float(v));
-        else
-#    endif
-            return cos(v);
-#endif
+    using std::cos;
+    return cos(v);
 }
 
 inline qreal qTan(qreal v)
 {
-#ifdef Q_OS_SYMBIAN
-    TReal tan_v;
-    Math::Tan(tan_v, static_cast<TReal>(v));
-    return static_cast<qreal>(tan_v);
-#else
-#    ifdef QT_USE_MATH_H_FLOATS
-        if (sizeof(qreal) == sizeof(float))
-            return tanf(float(v));
-        else
-#    endif
-            return tan(v);
-#endif
+    using std::tan;
+    return tan(v);
 }
 
 inline qreal qAcos(qreal v)
 {
-#ifdef Q_OS_SYMBIAN
-    TReal acos_v;
-    Math::ACos(acos_v, static_cast<TReal>(v));
-    return static_cast<qreal>(acos_v);
-#else
-#    ifdef QT_USE_MATH_H_FLOATS
-        if (sizeof(qreal) == sizeof(float))
-            return acosf(float(v));
-        else
-#    endif
-           return acos(v);
-#endif
+    using std::acos;
+    return acos(v);
 }
 
 inline qreal qAsin(qreal v)
 {
-#ifdef Q_OS_SYMBIAN
-    TReal asin_v;
-    Math::ASin(asin_v, static_cast<TReal>(v));
-    return static_cast<qreal>(asin_v);
-#else
-#    ifdef QT_USE_MATH_H_FLOATS
-        if (sizeof(qreal) == sizeof(float))
-            return asinf(float(v));
-        else
-#    endif
-            return asin(v);
-#endif
+    using std::asin;
+    return asin(v);
 }
 
 inline qreal qAtan(qreal v)
 {
-#ifdef Q_OS_SYMBIAN
-    TReal atan_v;
-    Math::ATan(atan_v, static_cast<TReal>(v));
-    return static_cast<qreal>(atan_v);
-#else
-#    ifdef QT_USE_MATH_H_FLOATS
-        if(sizeof(qreal) == sizeof(float))
-            return atanf(float(v));
-        else
-#    endif
-            return atan(v);
-#endif
+    using std::atan;
+    return atan(v);
 }
 
-inline qreal qAtan2(qreal x, qreal y)
+inline qreal qAtan2(qreal y, qreal x)
 {
-#ifdef Q_OS_SYMBIAN
-    TReal atan2_v;
-    Math::ATan(atan2_v, static_cast<TReal>(x), static_cast<TReal>(y));
-    return static_cast<qreal>(atan2_v);
-#else
-#    ifdef QT_USE_MATH_H_FLOATS
-        if(sizeof(qreal) == sizeof(float))
-            return atan2f(float(x), float(y));
-        else
-#    endif
-            return atan2(x, y);
-#endif
+    using std::atan2;
+    return atan2(y, x);
 }
 
 inline qreal qSqrt(qreal v)
 {
-#ifdef Q_OS_SYMBIAN
-    TReal sqrt_v;
-    Math::Sqrt(sqrt_v, static_cast<TReal>(v));
-    return static_cast<qreal>(sqrt_v);
-#else
-#    ifdef QT_USE_MATH_H_FLOATS
-        if (sizeof(qreal) == sizeof(float))
-            return sqrtf(float(v));
-        else
-#    endif
-            return sqrt(v);
-#endif
+    using std::sqrt;
+    return sqrt(v);
 }
 
 inline qreal qLn(qreal v)
 {
-#ifdef QT_USE_MATH_H_FLOATS
-    if (sizeof(qreal) == sizeof(float))
-        return logf(float(v));
-    else
-#endif
-        return log(v);
+    using std::log;
+    return log(v);
 }
 
 inline qreal qExp(qreal v)
 {
-#ifdef Q_OS_SYMBIAN
-    TReal exp_v;
-    Math::Exp(exp_v, static_cast<TReal>(v));
-    return static_cast<qreal>(exp_v);
-#else
-    // only one signature
-    // exists, exp(double)
+    using std::exp;
     return exp(v);
-#endif
 }
 
 inline qreal qPow(qreal x, qreal y)
 {
-#ifdef Q_OS_SYMBIAN
-    TReal pow_v;
-    Math::Pow(pow_v, static_cast<TReal>(x), static_cast<TReal>(y));
-    return static_cast<qreal>(pow_v);
-#else
-#    ifdef QT_USE_MATH_H_FLOATS
-        if (sizeof(qreal) == sizeof(float))
-            return powf(float(x), float(y));
-        else
-#    endif
-            return pow(x, y);
-#endif
+    using std::pow;
+    return pow(x, y);
 }
+
+#ifndef M_E
+#define M_E (2.7182818284590452354)
+#endif
+
+#ifndef M_LOG2E
+#define M_LOG2E (1.4426950408889634074)
+#endif
+
+#ifndef M_LOG10E
+#define M_LOG10E (0.43429448190325182765)
+#endif
+
+#ifndef M_LN2
+#define M_LN2 (0.69314718055994530942)
+#endif
+
+#ifndef M_LN10
+#define M_LN10 (2.30258509299404568402)
+#endif
 
 #ifndef M_PI
 #define M_PI (3.14159265358979323846)
+#endif
+
+#ifndef M_PI_2
+#define M_PI_2 (1.57079632679489661923)
+#endif
+
+#ifndef M_PI_4
+#define M_PI_4 (0.78539816339744830962)
+#endif
+
+#ifndef M_1_PI
+#define M_1_PI (0.31830988618379067154)
+#endif
+
+#ifndef M_2_PI
+#define M_2_PI (0.63661977236758134308)
+#endif
+
+#ifndef M_2_SQRTPI
+#define M_2_SQRTPI (1.12837916709551257390)
+#endif
+
+#ifndef M_SQRT2
+#define M_SQRT2 (1.41421356237309504880)
+#endif
+
+#ifndef M_SQRT1_2
+#define M_SQRT1_2 (0.70710678118654752440)
 #endif
 
 inline qreal qFastSin(qreal x)
@@ -281,8 +221,78 @@ inline qreal qFastCos(qreal x)
     return qt_sine_table[si] - (qt_sine_table[ci] + 0.5 * qt_sine_table[si] * d) * d;
 }
 
-QT_END_NAMESPACE
+Q_DECL_CONSTEXPR inline float qDegreesToRadians(float degrees)
+{
+    return degrees * float(M_PI/180);
+}
 
-QT_END_HEADER
+Q_DECL_CONSTEXPR inline double qDegreesToRadians(double degrees)
+{
+    return degrees * (M_PI / 180);
+}
+
+Q_DECL_CONSTEXPR inline float qRadiansToDegrees(float radians)
+{
+    return radians * float(180/M_PI);
+}
+
+Q_DECL_CONSTEXPR inline double qRadiansToDegrees(double radians)
+{
+    return radians * (180 / M_PI);
+}
+
+
+#if defined(QT_HAS_BUILTIN_CLZ)
+inline quint32 qNextPowerOfTwo(quint32 v)
+{
+    if (v == 0)
+        return 1;
+    return 2U << (31 ^ QAlgorithmsPrivate::qt_builtin_clz(v));
+}
+#else
+inline quint32 qNextPowerOfTwo(quint32 v)
+{
+    v |= v >> 1;
+    v |= v >> 2;
+    v |= v >> 4;
+    v |= v >> 8;
+    v |= v >> 16;
+    ++v;
+    return v;
+}
+#endif
+
+#if defined(QT_HAS_BUILTIN_CLZLL)
+inline quint64 qNextPowerOfTwo(quint64 v)
+{
+    if (v == 0)
+        return 1;
+    return Q_UINT64_C(2) << (63 ^ QAlgorithmsPrivate::qt_builtin_clzll(v));
+}
+#else
+inline quint64 qNextPowerOfTwo(quint64 v)
+{
+    v |= v >> 1;
+    v |= v >> 2;
+    v |= v >> 4;
+    v |= v >> 8;
+    v |= v >> 16;
+    v |= v >> 32;
+    ++v;
+    return v;
+}
+#endif
+
+inline quint32 qNextPowerOfTwo(qint32 v)
+{
+    return qNextPowerOfTwo(quint32(v));
+}
+
+inline quint64 qNextPowerOfTwo(qint64 v)
+{
+    return qNextPowerOfTwo(quint64(v));
+}
+
+QT_END_NAMESPACE
 
 #endif // QMATH_H

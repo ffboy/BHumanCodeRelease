@@ -9,7 +9,7 @@
 
 #pragma once
 
-#include "Tools/Enum.h"
+#include "Tools/Streams/Enum.h"
 #include "Tools/Math/Angle.h"
 #include "Tools/Math/Eigen.h"
 #include "Tools/Streams/AutoStreamable.h"
@@ -29,25 +29,29 @@ STREAMABLE(CameraInfo,
     lower,
   });
 
-  /** 
+  /**
    * Intrinsic camera parameters: axis skew is modelled as 0 (90° perfectly orthogonal XY)
    * and the same has been modeled for focal axis aspect ratio; distortion is considering
    * only 2nd and 4th order coefficients of radial model, which account for about 95% of total.
    */
-  float focalLength;
-  float focalLengthInv; // (1/focalLength) used to speed up certain calculations
-  float focalLenPow2;
+  float focalLength = 0;
+  float focalLengthInv = 0; // (1/focalLength) used to speed up certain calculations
+  float focalLenPow2 = 0;
+  float focalLengthHeight = 0;
+  float focalLengthHeightInv = 0;
 
   CameraInfo() = default;
   CameraInfo(Camera camera) : camera(camera) {}
 
   void updateFocalLength();
 
+  void draw() const;
+
   void onRead() { updateFocalLength(); },
 
   (Camera) camera,
-  (int) width,
-  (int) height,
+  (int)(0) width,
+  (int)(0) height,
   (Angle) openingAngleWidth,
   (Angle) openingAngleHeight,
   (Vector2f) opticalCenter,

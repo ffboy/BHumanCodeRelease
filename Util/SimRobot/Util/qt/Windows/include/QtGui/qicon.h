@@ -1,7 +1,7 @@
 /****************************************************************************
 **
-** Copyright (C) 2015 The Qt Company Ltd.
-** Contact: http://www.qt.io/licensing/
+** Copyright (C) 2016 The Qt Company Ltd.
+** Contact: https://www.qt.io/licensing/
 **
 ** This file is part of the QtGui module of the Qt Toolkit.
 **
@@ -11,29 +11,27 @@
 ** accordance with the commercial license agreement provided with the
 ** Software or, alternatively, in accordance with the terms contained in
 ** a written agreement between you and The Qt Company. For licensing terms
-** and conditions see http://www.qt.io/terms-conditions. For further
-** information use the contact form at http://www.qt.io/contact-us.
+** and conditions see https://www.qt.io/terms-conditions. For further
+** information use the contact form at https://www.qt.io/contact-us.
 **
 ** GNU Lesser General Public License Usage
 ** Alternatively, this file may be used under the terms of the GNU Lesser
-** General Public License version 2.1 or version 3 as published by the Free
-** Software Foundation and appearing in the file LICENSE.LGPLv21 and
-** LICENSE.LGPLv3 included in the packaging of this file. Please review the
-** following information to ensure the GNU Lesser General Public License
-** requirements will be met: https://www.gnu.org/licenses/lgpl.html and
-** http://www.gnu.org/licenses/old-licenses/lgpl-2.1.html.
-**
-** As a special exception, The Qt Company gives you certain additional
-** rights. These rights are described in The Qt Company LGPL Exception
-** version 1.1, included in the file LGPL_EXCEPTION.txt in this package.
+** General Public License version 3 as published by the Free Software
+** Foundation and appearing in the file LICENSE.LGPL3 included in the
+** packaging of this file. Please review the following information to
+** ensure the GNU Lesser General Public License version 3 requirements
+** will be met: https://www.gnu.org/licenses/lgpl-3.0.html.
 **
 ** GNU General Public License Usage
 ** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 3.0 as published by the Free Software
-** Foundation and appearing in the file LICENSE.GPL included in the
-** packaging of this file.  Please review the following information to
-** ensure the GNU General Public License version 3.0 requirements will be
-** met: http://www.gnu.org/copyleft/gpl.html.
+** General Public License version 2.0 or (at your option) the GNU General
+** Public license version 3 or any later version approved by the KDE Free
+** Qt Foundation. The licenses are as published by the Free Software
+** Foundation and appearing in the file LICENSE.GPL2 and LICENSE.GPL3
+** included in the packaging of this file. Please review the following
+** information to ensure the GNU General Public License requirements will
+** be met: https://www.gnu.org/licenses/gpl-2.0.html and
+** https://www.gnu.org/licenses/gpl-3.0.html.
 **
 ** $QT_END_LICENSE$
 **
@@ -42,20 +40,16 @@
 #ifndef QICON_H
 #define QICON_H
 
-#include <QtCore/qglobal.h>
+#include <QtGui/qtguiglobal.h>
 #include <QtCore/qsize.h>
 #include <QtCore/qlist.h>
 #include <QtGui/qpixmap.h>
 
-QT_BEGIN_HEADER
-
 QT_BEGIN_NAMESPACE
 
-QT_MODULE(Gui)
 
 class QIconPrivate;
 class QIconEngine;
-class QIconEngineV2;
 
 class Q_GUI_EXPORT QIcon
 {
@@ -63,19 +57,24 @@ public:
     enum Mode { Normal, Disabled, Active, Selected };
     enum State { On, Off };
 
-    QIcon();
+    QIcon() Q_DECL_NOEXCEPT;
     QIcon(const QPixmap &pixmap);
     QIcon(const QIcon &other);
+#ifdef Q_COMPILER_RVALUE_REFS
+    QIcon(QIcon &&other) Q_DECL_NOEXCEPT
+        : d(other.d)
+    { other.d = Q_NULLPTR; }
+#endif
     explicit QIcon(const QString &fileName); // file or resource name
     explicit QIcon(QIconEngine *engine);
-    explicit QIcon(QIconEngineV2 *engine);
     ~QIcon();
     QIcon &operator=(const QIcon &other);
 #ifdef Q_COMPILER_RVALUE_REFS
-    inline QIcon &operator=(QIcon &&other)
-    { qSwap(d, other.d); return *this; }
+    inline QIcon &operator=(QIcon &&other) Q_DECL_NOEXCEPT
+    { swap(other); return *this; }
 #endif
-    inline void swap(QIcon &other) { qSwap(d, other.d); }
+    inline void swap(QIcon &other) Q_DECL_NOEXCEPT
+    { qSwap(d, other.d); }
 
     operator QVariant() const;
 
@@ -84,8 +83,10 @@ public:
         { return pixmap(QSize(w, h), mode, state); }
     inline QPixmap pixmap(int extent, Mode mode = Normal, State state = Off) const
         { return pixmap(QSize(extent, extent), mode, state); }
+    QPixmap pixmap(QWindow *window, const QSize &size, Mode mode = Normal, State state = Off) const;
 
     QSize actualSize(const QSize &size, Mode mode = Normal, State state = Off) const;
+    QSize actualSize(QWindow *window, const QSize &size, Mode mode = Normal, State state = Off) const;
 
     QString name() const;
 
@@ -97,7 +98,9 @@ public:
     bool isDetached() const;
     void detach();
 
-    int serialNumber() const;
+#if QT_DEPRECATED_SINCE(5, 0)
+    QT_DEPRECATED inline int serialNumber() const { return cacheKey() >> 32; }
+#endif
     qint64 cacheKey() const;
 
     void addPixmap(const QPixmap &pixmap, Mode mode = Normal, State state = Off);
@@ -105,7 +108,11 @@ public:
 
     QList<QSize> availableSizes(Mode mode = Normal, State state = Off) const;
 
-    static QIcon fromTheme(const QString &name, const QIcon &fallback = QIcon());
+    void setIsMask(bool isMask);
+    bool isMask() const;
+
+    static QIcon fromTheme(const QString &name);
+    static QIcon fromTheme(const QString &name, const QIcon &fallback);
     static bool hasThemeIcon(const QString &name);
 
     static QStringList themeSearchPaths();
@@ -113,21 +120,6 @@ public:
 
     static QString themeName();
     static void setThemeName(const QString &path);
-
-
-#ifdef QT3_SUPPORT
-    enum Size { Small, Large, Automatic = Small };
-    static QT3_SUPPORT void setPixmapSize(Size which, const QSize &size);
-    static QT3_SUPPORT QSize pixmapSize(Size which);
-    inline QT3_SUPPORT void reset(const QPixmap &pixmap, Size /*size*/) { *this = QIcon(pixmap); }
-    inline QT3_SUPPORT void setPixmap(const QPixmap &pixmap, Size, Mode mode = Normal, State state = Off)
-        { addPixmap(pixmap, mode, state); }
-    inline QT3_SUPPORT void setPixmap(const QString &fileName, Size, Mode mode = Normal, State state = Off)
-        { addPixmap(QPixmap(fileName), mode, state); }
-    QT3_SUPPORT QPixmap pixmap(Size size, Mode mode, State state = Off) const;
-    QT3_SUPPORT QPixmap pixmap(Size size, bool enabled, State state = Off) const;
-    QT3_SUPPORT QPixmap pixmap() const;
-#endif
 
     Q_DUMMY_COMPARISON_OPERATOR(QIcon)
 
@@ -144,19 +136,19 @@ public:
 };
 
 Q_DECLARE_SHARED(QIcon)
-Q_DECLARE_TYPEINFO(QIcon, Q_MOVABLE_TYPE);
 
 #if !defined(QT_NO_DATASTREAM)
 Q_GUI_EXPORT QDataStream &operator<<(QDataStream &, const QIcon &);
 Q_GUI_EXPORT QDataStream &operator>>(QDataStream &, QIcon &);
 #endif
 
-#ifdef QT3_SUPPORT
-typedef QIcon QIconSet;
+#ifndef QT_NO_DEBUG_STREAM
+Q_GUI_EXPORT QDebug operator<<(QDebug dbg, const QIcon &);
 #endif
 
-QT_END_NAMESPACE
+Q_GUI_EXPORT QString qt_findAtNxFile(const QString &baseFileName, qreal targetDevicePixelRatio,
+                                     qreal *sourceDevicePixelRatio = Q_NULLPTR);
 
-QT_END_HEADER
+QT_END_NAMESPACE
 
 #endif // QICON_H
